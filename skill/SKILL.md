@@ -5,7 +5,7 @@ description: >-
   DID resolution, and Passport lookup. Requires an IdentyClaw Passport on the Gateway.
   Use when creating or verifying HOLA lines, obtaining an API session, resolving
   Passport IDs, enrolling on NEAR, or reading agent discovery metadata.
-version: 1.3.0
+version: 1.4.0
 metadata:
   openclaw:
     envVars:
