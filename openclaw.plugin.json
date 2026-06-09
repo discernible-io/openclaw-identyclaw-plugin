@@ -24,10 +24,21 @@
       "nearPrivateKey": {
         "description": "NEAR private key value, usually prefixed with ed25519:",
         "type": "string"
+      },
+      "nearCredentialsOutputDirs": {
+        "type": "array",
+        "items": {
+          "description": "Allowlisted output directories for identyclaw_generate_near_account (in addition to paths ending in secrets/near-credentials)",
+          "type": "string"
+        }
+      },
+      "generateNearAccountDefaultDir": {
+        "description": "Default output directory for identyclaw_generate_near_account when outputDir is omitted",
+        "type": "string"
       }
     }
   },
-  "version": "1.4.0",
+  "version": "1.5.0",
   "contracts": {
     "tools": [
       "identyclaw_list_agents",
@@ -35,6 +46,7 @@
       "identyclaw_get_nonce",
       "identyclaw_create_hola",
       "identyclaw_verify_hola",
+      "identyclaw_generate_near_account",
       "identyclaw_list_resources",
       "identyclaw_get_resource",
       "identyclaw_get_agent_identity",
@@ -53,6 +65,9 @@
       "optional": true
     },
     "identyclaw_verify_hola": {
+      "optional": true
+    },
+    "identyclaw_generate_near_account": {
       "optional": true
     },
     "identyclaw_get_agent_identity": {

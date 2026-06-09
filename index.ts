@@ -4,7 +4,8 @@ import nacl from "tweetnacl";
 import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 
 const require = createRequire(import.meta.url);
-const { createHola, nearPrivateKeyToSigningSecretKey } = require("@rodit/hola-client") as {
+const { createHola, nearPrivateKeyToSigningSecretKey, writeNearCredentialsFile } =
+  require("@rodit/hola-client") as {
   createHola: (params: {
     nearPrivateKey: string;
     jwt: string;
@@ -22,6 +23,14 @@ const { createHola, nearPrivateKeyToSigningSecretKey } = require("@rodit/hola-cl
     requestId?: string;
   }>;
   nearPrivateKeyToSigningSecretKey: (nearPrivateKey: string) => Uint8Array;
+  writeNearCredentialsFile: (
+    outputDir: string,
+    options?: { force?: boolean; allowedOutputDirs?: string[] }
+  ) => {
+    implicit_account_id: string;
+    public_key: string;
+    filePath: string;
+  };
 };
 
 type LoginCache = {
@@ -33,6 +42,8 @@ type RuntimeConfig = {
   baseUrl: string;
   accountid?: string;
   nearPrivateKey?: string;
+  nearCredentialsOutputDirs?: string[];
+  generateNearAccountDefaultDir?: string;
 };
 
 const configSchema = Type.Object(
@@ -48,6 +59,20 @@ const configSchema = Type.Object(
     ),
     nearPrivateKey: Type.Optional(
       Type.String({ description: "NEAR private key value, usually prefixed with ed25519:" })
+    ),
+    nearCredentialsOutputDirs: Type.Optional(
+      Type.Array(
+        Type.String({
+          description:
+            "Allowlisted output directories for identyclaw_generate_near_account (in addition to paths ending in secrets/near-credentials)"
+        })
+      )
+    ),
+    generateNearAccountDefaultDir: Type.Optional(
+      Type.String({
+        description:
+          "Default output directory for identyclaw_generate_near_account when outputDir is omitted"
+      })
     )
   },
   { additionalProperties: false }
@@ -123,7 +148,16 @@ function resolveConfig(pluginConfig: Record<string, unknown>): RuntimeConfig {
     nearPrivateKey:
       typeof pluginConfig.nearPrivateKey === "string"
         ? pluginConfig.nearPrivateKey
-        : envKey
+        : envKey,
+    nearCredentialsOutputDirs: Array.isArray(pluginConfig.nearCredentialsOutputDirs)
+      ? pluginConfig.nearCredentialsOutputDirs.filter(
+          (entry): entry is string => typeof entry === "string"
+        )
+      : undefined,
+    generateNearAccountDefaultDir:
+      typeof pluginConfig.generateNearAccountDefaultDir === "string"
+        ? pluginConfig.generateNearAccountDefaultDir
+        : process.env.IDENTYCLAW_NEAR_CREDENTIALS_DIR
   };
 }
 
@@ -343,6 +377,42 @@ export default defineToolPlugin({
           body.expectedRecipient = params.expectedRecipient;
         }
         return apiPost("/api/identity/verify", body, cfg, true);
+      }
+    }),
+    tool({
+      name: "identyclaw_generate_near_account",
+      label: "Generate NEAR Account",
+      description:
+        "Create a NEAR implicit account and write gennearaccount-compatible JSON to disk. Returns implicit_account_id and public_key only — private key stays in the credentials file. Requires outputDir or generateNearAccountDefaultDir; path must end with secrets/near-credentials or be allowlisted in nearCredentialsOutputDirs.",
+      parameters: Type.Object({
+        outputDir: Type.Optional(
+          Type.String({
+            description:
+              "Directory for <implicit_account_id>.json (default: generateNearAccountDefaultDir or IDENTYCLAW_NEAR_CREDENTIALS_DIR)"
+          })
+        )
+      }),
+      optional: true,
+      async execute(params, config) {
+        const cfg = resolveConfig(config);
+        const outputDir = params.outputDir?.trim() || cfg.generateNearAccountDefaultDir?.trim();
+        if (!outputDir) {
+          throw new Error(
+            "identyclaw_generate_near_account requires outputDir or generateNearAccountDefaultDir in plugin config (or IDENTYCLAW_NEAR_CREDENTIALS_DIR)"
+          );
+        }
+
+        const result = writeNearCredentialsFile(outputDir, {
+          allowedOutputDirs: cfg.nearCredentialsOutputDirs
+        });
+
+        return {
+          implicit_account_id: result.implicit_account_id,
+          public_key: result.public_key,
+          filePath: result.filePath,
+          message:
+            "NEAR implicit account created. Private key written to filePath only — restart the gateway (or identyclaw-agents bootstrap) to sync plugin credentials after purchasing a Passport."
+        };
       }
     }),
     tool({

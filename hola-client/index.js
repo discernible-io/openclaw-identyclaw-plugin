@@ -9,6 +9,12 @@ const {
 } = require("./lib/sign");
 const { getNonce } = require("./lib/nonce-api");
 const { nearPrivateKeyToSigningSecretKey } = require("./lib/near-key");
+const {
+  generateNearImplicitAccount,
+  validateNearCredentialsOutputDir,
+  writeNearCredentialsFile,
+  hasNearCredentialsDirSuffix
+} = require("./lib/generate-near-account");
 const { createHola } = require("./lib/create-hola");
 const { parseHola } = require("./lib/parse");
 const {
@@ -34,6 +40,10 @@ module.exports = {
   PROTOCOL_SUFFIX,
   getNonce,
   nearPrivateKeyToSigningSecretKey,
+  generateNearImplicitAccount,
+  validateNearCredentialsOutputDir,
+  writeNearCredentialsFile,
+  hasNearCredentialsDirSuffix,
   createHola,
   parseHola,
   COLLABORATION_SCHEMA,

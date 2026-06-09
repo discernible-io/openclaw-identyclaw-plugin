@@ -4,10 +4,11 @@ OpenClaw **code plugin** that exposes IdentyClaw HTTP API endpoints as agent too
 
 **Complementary artifacts** (from [OpenClaw integration guide](https://github.com/discernible-io/idclawserver-idc/blob/main/references/openclaw-integration-guide.md)):
 
-| Artifact | Install | Source in this repo |
+| Artifact | Install | Source |
 | --- | --- | --- |
-| Skill (workflows) | `openclaw skills install clawhub:identyclaw` | [`skill/SKILL.md`](./skill/SKILL.md) |
-| Plugin (tools) | `openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin` | Root `package.json` / `index.ts` |
+| Skill (workflows) | `openclaw skills install clawhub:identyclaw` | [`skill/SKILL.md`](./skill/SKILL.md) in this repo |
+| Plugin (tools) | `openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin` | Root `package.json` / `index.ts` in this repo |
+| A2A plugin (peer messaging) | `openclaw plugins install clawhub:@identyclaw/openclaw-a2a-plugin` | [`openclaw-a2a-idc-plugin`](https://github.com/discernible-io/openclaw-a2a-idc-plugin) — RODiT JWT wire auth for agent-to-agent messaging (`a2a_*` tools) |
 | MCP (canonical docs) | `https://api.identyclaw.com/mcp` | Synced into skill bundle from idclawserver-idc `references/` |
 
 ---
@@ -53,6 +54,54 @@ The plugin **auto-logins** when protected tools run: `GET /api/login/timestamp` 
 2. **HOLA create** — uppercase canonical HOLA prefix → **base32** line signature (via `@rodit/hola-client`). Never sent to HTTP endpoints except inside the finished HOLA string you deliver to peers or verify endpoints.
 
 `identyclaw_verify_hola` does **not** need `nearPrivateKey` — only an API session and the peer’s HOLA line.
+
+---
+
+## NEAR account generation (v1.5.0+)
+
+Create a NEAR implicit account without installing the `gennearaccount` C binary. Credentials are written as gennearaccount-compatible JSON under `secrets/near-credentials/<implicit_account_id>.json` (directory mode `0700`, file mode `0600`). **Private keys never appear in tool output or chat** — only `implicit_account_id` and `public_key` are returned.
+
+### Operator CLI (recommended)
+
+From a plugin checkout:
+
+```bash
+npm run generate-near-account -- /path/to/secrets/near-credentials
+# or default: ./secrets/near-credentials
+# env: IDENTYCLAW_NEAR_CREDENTIALS_DIR
+```
+
+Example (identyclaw-agents layout):
+
+```bash
+npm run generate-near-account -- ~/identyclaw-agents-app/agents/agent-a/secrets/near-credentials
+```
+
+Then purchase a Passport at https://purchase.identyclaw.com for the printed account id, restart the gateway (or `./identyclaw.sh restart agent-a`) so bootstrap syncs `IDENTYCLAW_*` into `.env` and plugin config.
+
+### Optional agent tool
+
+Allowlist `identyclaw_generate_near_account` for advanced setups. Output path must end with `secrets/near-credentials` or appear in `nearCredentialsOutputDirs`:
+
+```json5
+{
+  plugins: {
+    entries: {
+      "identyclaw-tools": {
+        config: {
+          generateNearAccountDefaultDir: "/home/node/.openclaw/secrets/near-credentials",
+          nearCredentialsOutputDirs: []
+        }
+      }
+    }
+  },
+  tools: {
+    allow: ["identyclaw_generate_near_account"]
+  }
+}
+```
+
+Returns: `implicit_account_id`, `public_key`, `filePath` — not `private_key`.
 
 ---
 
@@ -109,6 +158,8 @@ Enable optional tools in OpenClaw config:
 | `baseUrl` | `IDENTYCLAW_BASE_URL` | API host (default `https://api.identyclaw.com`) |
 | `accountid` | `IDENTYCLAW_ACCOUNT_ID` | API login identifier (64-char hex NEAR implicit account) |
 | `nearPrivateKey` | `IDENTYCLAW_NEAR_PRIVATE_KEY` | API login signature + `identyclaw_create_hola` local signing |
+| `generateNearAccountDefaultDir` | `IDENTYCLAW_NEAR_CREDENTIALS_DIR` | Default directory for `identyclaw_generate_near_account` |
+| `nearCredentialsOutputDirs` | — | Extra allowlisted output dirs for account generation tool |
 
 Deprecated config alias: `roditid` → use `accountid`.
 
@@ -148,6 +199,12 @@ Requires API session. Create also requires `nearPrivateKey` on the Gateway.
 | `identyclaw_get_nonce` | Fetch `noncetsHex` + `timestamp` for manual HOLA builds | [holanonce-api.md](https://github.com/discernible-io/idclawserver-idc/blob/main/references/holanonce-api.md) |
 | `identyclaw_create_hola` | Nonce + local sign → outbound **HOLA line** (`@rodit/hola-client`) | [hola-howto.md](https://github.com/discernible-io/idclawserver-idc/blob/main/references/hola-howto.md) steps 2–3 |
 | `identyclaw_verify_hola` | `POST /api/identity/verify` for a peer **HOLA line** | [hola-howto.md](https://github.com/discernible-io/idclawserver-idc/blob/main/references/hola-howto.md) step 5 |
+
+### Account generation (no API session)
+
+| Tool | Role |
+| --- | --- |
+| `identyclaw_generate_near_account` | Write NEAR credentials JSON to disk; returns `implicit_account_id` + `public_key` only |
 
 Optional tools are off by default in the manifest; allowlist them in OpenClaw config for safer rollout.
 
