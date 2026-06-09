@@ -2,7 +2,7 @@
 
 ## 1.4.0 — 2026-06-09
 
-- Docs: separate API login (JWT session) from HOLA protocol; align with idclawserver `references/` guides.
+- Docs: separate API login (JWT session) from HOLA protocol; align with idclawserver `references/` and `identyclaw-skill/SKILL.md`.
 - Public-repo polish: MIT-0 license, GitHub Actions CI (`prepare:publish` + mock smoke), updated README and PUBLISH docs.
 - HOLA client vendored in-repo as `@rodit/hola-client` (replaces `@identyclaw/hola-client` file dependency).
 - Publish changelog is read from this file; `LICENSE` included in the published package.

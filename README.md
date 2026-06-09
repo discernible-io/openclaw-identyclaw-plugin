@@ -4,11 +4,11 @@ OpenClaw **code plugin** that exposes IdentyClaw HTTP API endpoints as agent too
 
 **Complementary artifacts** (from [OpenClaw integration guide](https://github.com/discernible-io/idclawserver-idc/blob/main/references/openclaw-integration-guide.md)):
 
-| Artifact | Install |
-| --- | --- |
-| Skill (workflows) | `openclaw skills install clawhub:identyclaw` |
-| Plugin (this repo) | `openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin` |
-| MCP (canonical docs) | `https://api.identyclaw.com/mcp` — e.g. `doc:reference:login-authentication`, `doc:reference:hola-howto` |
+| Artifact | Install | Source |
+| --- | --- | --- |
+| Skill (workflows) | `openclaw skills install clawhub:identyclaw` | [`identyclaw-skill/SKILL.md`](https://github.com/discernible-io/idclawserver-idc/blob/main/identyclaw-skill/SKILL.md) |
+| Plugin (this repo) | `openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin` | This repository |
+| MCP (canonical docs) | `https://api.identyclaw.com/mcp` | `doc:reference:login-authentication`, `doc:reference:hola-howto`, `doc:skills` |
 
 ---
 
