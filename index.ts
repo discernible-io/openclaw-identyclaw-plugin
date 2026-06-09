@@ -258,7 +258,8 @@ export default defineToolPlugin({
     tool({
       name: "identyclaw_get_my_identity",
       label: "My Identity",
-      description: "Get caller identity from IdentyClaw",
+      description:
+        "GET /api/me/identity — caller Passport (requires API session JWT from auto-login; not a HOLA line)",
       parameters: Type.Object({}),
       optional: true,
       async execute(_params, config) {
@@ -270,7 +271,7 @@ export default defineToolPlugin({
       name: "identyclaw_get_nonce",
       label: "HOLA Nonce",
       description:
-        "GET /api/holanonce16ts — returns JSON { noncetsHex, timestamp, length, algorithm, requestId }. Use noncetsHex and timestamp in the HOLA line (not timestamp_iso from login).",
+        "HOLA lane: GET /api/holanonce16ts (requires API session JWT). Returns noncetsHex + timestamp for HOLA line construction — not login timestamp_iso from GET /api/login/timestamp.",
       parameters: Type.Object({}),
       optional: true,
       async execute(_params, config) {
@@ -282,7 +283,7 @@ export default defineToolPlugin({
       name: "identyclaw_create_hola",
       label: "Create HOLA",
       description:
-        "Build and sign an outbound standard-format HOLA line locally (nonce from API; private key stays on this host). Returns hola ready to send to a peer.",
+        "HOLA lane: fetch nonce (API session JWT) then sign outbound HOLA line locally with nearPrivateKey (base32 line signature — separate from API login base64url signature). Returns hola wire string for peers.",
       parameters: Type.Object({
         recipient: Type.Optional(
           Type.String({
@@ -317,7 +318,8 @@ export default defineToolPlugin({
     tool({
       name: "identyclaw_verify_hola",
       label: "Verify HOLA",
-      description: "Verify a peer HOLA message via POST /api/identity/verify",
+      description:
+        "HOLA lane: POST /api/identity/verify with peer HOLA line (API session JWT authorizes the call; payload is the HOLA string, not a JWT)",
       parameters: Type.Object({
         hola: Type.String({ description: "Full HOLA handshake line from another agent" }),
         maxAgeMs: Type.Optional(Type.Number({ minimum: 1 })),

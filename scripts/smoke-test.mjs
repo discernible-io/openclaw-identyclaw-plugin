@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 
 /**
- * Lightweight HTTP smoke test for identyclaw plugin endpoint coverage.
- * Validates API reachability and payload shape, independent of OpenClaw runtime.
+ * HTTP smoke test for identyclaw plugin endpoint coverage (no OpenClaw runtime).
+ *
+ * Two IdentyClaw lanes (see README):
+ *   API login  — jwt_token from POST /api/login (Bearer on protected routes)
+ *   HOLA       — slash-separated HOLA line (create/verify); not interchangeable with JWT
  *
  * Env:
  *   IDENTYCLAW_BASE_URL — API host (default https://api.identyclaw.com)
- *   IDENTYCLAW_JWT — Bearer token for protected endpoints
- *   IDENTYCLAW_ACCOUNT_ID + IDENTYCLAW_NEAR_PRIVATE_KEY — login bootstrap (alternative to JWT)
- *   MOCK_FETCH=1 — skip network; only validates env and exits 0 (CI deterministic mode)
+ *   IDENTYCLAW_JWT — API bearer token (jwt_token), not a HOLA line
+ *   IDENTYCLAW_ACCOUNT_ID + IDENTYCLAW_NEAR_PRIVATE_KEY — API login bootstrap
+ *   MOCK_FETCH=1 — skip network (CI)
  */
 
 import { createRequire } from "node:module";
@@ -125,7 +128,7 @@ async function postJson(path, body, auth = false) {
 async function runCreateHolaSmoke() {
   const nearPrivateKey = process.env.IDENTYCLAW_NEAR_PRIVATE_KEY;
   if (!jwt || !nearPrivateKey) {
-    console.log("Skipping create HOLA smoke — need JWT and IDENTYCLAW_NEAR_PRIVATE_KEY.");
+    console.log("Skipping HOLA create smoke — need API session JWT and IDENTYCLAW_NEAR_PRIVATE_KEY.");
     return 0;
   }
 

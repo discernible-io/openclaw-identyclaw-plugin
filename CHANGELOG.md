@@ -1,8 +1,15 @@
 # Changelog
 
+## 1.4.0 — 2026-06-09
+
+- Docs: separate API login (JWT session) from HOLA protocol; align with idclawserver `references/` guides.
+- Public-repo polish: MIT-0 license, GitHub Actions CI (`prepare:publish` + mock smoke), updated README and PUBLISH docs.
+- HOLA client vendored in-repo as `@rodit/hola-client` (replaces `@identyclaw/hola-client` file dependency).
+- Publish changelog is read from this file; `LICENSE` included in the published package.
+
 ## 1.3.0 — 2026-06-06
 
-- New optional JWT tool: `identyclaw_create_hola` — outbound HOLA create/sign via `@rodit/hola-client` (private key stays on Gateway host).
+- New optional JWT tool: `identyclaw_create_hola` — outbound HOLA create/sign via `@identyclaw/hola-client` (private key stays on Gateway host).
 - Login signing uses full tweetnacl secret key derivation from NEAR `ed25519:` keys.
 - Smoke test: create HOLA → `POST /api/testhola` round-trip when credentials are configured.
 
