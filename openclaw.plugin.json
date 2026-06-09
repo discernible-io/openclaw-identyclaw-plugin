@@ -1,0 +1,68 @@
+{
+  "id": "identyclaw-tools",
+  "name": "IdentyClaw Tools",
+  "description": "OpenClaw agent tools for the IdentyClaw HTTP API",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "additionalProperties": false,
+    "type": "object",
+    "properties": {
+      "baseUrl": {
+        "description": "IdentyClaw API base URL (default https://api.identyclaw.com)",
+        "type": "string"
+      },
+      "accountid": {
+        "description": "64-char hex NEAR implicit account id",
+        "type": "string"
+      },
+      "roditid": {
+        "description": "Deprecated alias for accountid; use accountid instead",
+        "type": "string"
+      },
+      "nearPrivateKey": {
+        "description": "NEAR private key value, usually prefixed with ed25519:",
+        "type": "string"
+      }
+    }
+  },
+  "version": "1.3.0",
+  "contracts": {
+    "tools": [
+      "identyclaw_list_agents",
+      "identyclaw_get_my_identity",
+      "identyclaw_get_nonce",
+      "identyclaw_create_hola",
+      "identyclaw_verify_hola",
+      "identyclaw_list_resources",
+      "identyclaw_get_resource",
+      "identyclaw_get_agent_identity",
+      "identyclaw_check_subagent_signer",
+      "identyclaw_resolve_did"
+    ]
+  },
+  "toolMetadata": {
+    "identyclaw_get_my_identity": {
+      "optional": true
+    },
+    "identyclaw_get_nonce": {
+      "optional": true
+    },
+    "identyclaw_create_hola": {
+      "optional": true
+    },
+    "identyclaw_verify_hola": {
+      "optional": true
+    },
+    "identyclaw_get_agent_identity": {
+      "optional": true
+    },
+    "identyclaw_check_subagent_signer": {
+      "optional": true
+    },
+    "identyclaw_resolve_did": {
+      "optional": true
+    }
+  }
+}

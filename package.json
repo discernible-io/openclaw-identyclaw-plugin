@@ -1,0 +1,52 @@
+{
+  "name": "@identyclaw/openclaw-identyclaw-plugin",
+  "version": "1.3.0",
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "OpenClaw plugin exposing IdentyClaw API agent tools",
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "plugin:build": "node ./scripts/invoke-openclaw.mjs plugins build --entry ./dist/index.js",
+    "plugin:validate": "node ./scripts/invoke-openclaw.mjs plugins validate --entry ./dist/index.js",
+    "prepare:publish": "npm run build && npm run plugin:build && npm run plugin:validate",
+    "smoke:test": "node ./scripts/smoke-test.mjs",
+    "smoke:test:mock": "MOCK_FETCH=1 node ./scripts/smoke-test.mjs",
+    "publish:clawhub:dry-run": "node ./scripts/publish-clawhub.mjs --dry-run",
+    "publish:clawhub": "node ./scripts/publish-clawhub.mjs"
+  },
+  "dependencies": {
+    "@identyclaw/hola-client": "file:../hola-client",
+    "@sinclair/typebox": "^0.34.41",
+    "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "openclaw": "^2026.5.17",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.5.17"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.5.17",
+      "minGatewayVersion": "2026.5.17"
+    },
+    "build": {
+      "openclawVersion": "2026.5.17",
+      "pluginSdkVersion": "2026.5.17"
+    }
+  }
+}
