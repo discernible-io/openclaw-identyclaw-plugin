@@ -6,11 +6,10 @@ OpenClaw agent tool plugin that wraps the IdentyClaw HTTP API. Registers ten too
 
 ## Development
 
-Run all commands from this directory (`openclaw-identyclaw-plugin/`), not the repo root. OpenClaw CLI requires **Node.js 22.19+**.
+Run all commands from the repository root. OpenClaw CLI requires **Node.js 22.19+** (see `.nvmrc`).
 
 ```bash
-cd openclaw-identyclaw-plugin
-nvm use    # or ensure Node >= 22.19 (see .nvmrc)
+nvm use    # or ensure Node >= 22.19
 npm install
 npm run prepare:publish   # build + sync manifest + validate
 npm run smoke:test
@@ -41,7 +40,7 @@ From a local checkout (after `npm run prepare:publish`):
 openclaw plugins install /path/to/openclaw-identyclaw-plugin
 ```
 
-After publish to ClawHub:
+From ClawHub:
 
 ```bash
 openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin
@@ -84,7 +83,7 @@ Enable protected tools in your OpenClaw config (optional tools are off by defaul
 - `identyclaw_get_resource` (public)
 - `identyclaw_get_my_identity` (JWT, optional)
 - `identyclaw_get_nonce` (JWT, optional)
-- `identyclaw_create_hola` (JWT + `nearPrivateKey`, optional) — local sign via `@identyclaw/hola-client`; private key never sent to API
+- `identyclaw_create_hola` (JWT + `nearPrivateKey`, optional) — local sign via `@rodit/hola-client`; private key never sent to API
 - `identyclaw_verify_hola` (JWT, optional)
 - `identyclaw_get_agent_identity` (JWT, optional) — `GET /api/identity/token/{tokenId}/full`
 - `identyclaw_check_subagent_signer` (JWT, optional) — `POST /api/isauthorizedsigner`
@@ -112,6 +111,7 @@ Environment variable fallback:
   1. `GET /api/login/timestamp`
   2. Sign `accountid + timestamp_iso` with Ed25519
   3. `POST /api/login` with `accountid`, `timestamp`, and `base64url_signature`
+- HOLA signing uses the vendored [`hola-client`](./hola-client) package (`@rodit/hola-client`).
 
 ## Optional tools
 
@@ -136,15 +136,6 @@ npm run publish:clawhub:dry-run
 npm run publish:clawhub
 ```
 
-## Smoke test
+## License
 
-Run a basic endpoint smoke test from this plugin folder:
-
-```bash
-npm run smoke:test
-```
-
-Optional environment variables:
-
-- `IDENTYCLAW_BASE_URL` (defaults to `https://api.identyclaw.com`)
-- `IDENTYCLAW_JWT` (if set, protected endpoint checks are included)
+[MIT-0](./LICENSE) (MIT No Attribution). ClawHub-published releases are distributed under the same terms as other registry content on [clawhub.ai](https://clawhub.ai).

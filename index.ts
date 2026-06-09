@@ -4,7 +4,7 @@ import nacl from "tweetnacl";
 import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 
 const require = createRequire(import.meta.url);
-const { createHola, nearPrivateKeyToSigningSecretKey } = require("@identyclaw/hola-client") as {
+const { createHola, nearPrivateKeyToSigningSecretKey } = require("@rodit/hola-client") as {
   createHola: (params: {
     nearPrivateKey: string;
     jwt: string;

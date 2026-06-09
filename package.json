@@ -1,14 +1,15 @@
 {
   "name": "@identyclaw/openclaw-identyclaw-plugin",
   "version": "1.3.0",
-  "license": "UNLICENSED",
+  "license": "MIT-0",
   "type": "module",
   "description": "OpenClaw plugin exposing IdentyClaw API agent tools",
   "main": "./dist/index.js",
   "files": [
     "dist",
     "openclaw.plugin.json",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -21,12 +22,13 @@
     "publish:clawhub": "node ./scripts/publish-clawhub.mjs"
   },
   "dependencies": {
-    "@identyclaw/hola-client": "file:../hola-client",
+    "@rodit/hola-client": "file:./hola-client",
     "@sinclair/typebox": "^0.34.41",
     "bs58": "^6.0.0",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@types/node": "^22.19.0",
     "openclaw": "^2026.5.17",
     "typescript": "^5.9.3"
   },

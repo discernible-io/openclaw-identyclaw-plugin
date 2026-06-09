@@ -2,7 +2,7 @@
 
 ## 1.3.0 — 2026-06-06
 
-- New optional JWT tool: `identyclaw_create_hola` — outbound HOLA create/sign via `@identyclaw/hola-client` (private key stays on Gateway host).
+- New optional JWT tool: `identyclaw_create_hola` — outbound HOLA create/sign via `@rodit/hola-client` (private key stays on Gateway host).
 - Login signing uses full tweetnacl secret key derivation from NEAR `ed25519:` keys.
 - Smoke test: create HOLA → `POST /api/testhola` round-trip when credentials are configured.
 

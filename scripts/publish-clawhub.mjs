@@ -35,6 +35,21 @@ function readPackageVersion() {
 run("npm", ["run", "prepare:publish"]);
 
 const version = readPackageVersion();
+
+function readChangelogSummary(ver) {
+  const changelog = readFileSync(join(pluginRoot, "CHANGELOG.md"), "utf8");
+  const section = changelog.match(new RegExp(`## ${ver.replace(/\./g, "\\.")}[^\n]*\\n([\\s\\S]*?)(?=\\n## |$)`));
+  if (!section) {
+    return `v${ver}`;
+  }
+  const bullets = section[1]
+    .split("\n")
+    .filter((line) => line.startsWith("- "))
+    .map((line) => line.slice(2).trim())
+    .join("; ");
+  return bullets ? `v${ver}: ${bullets}` : `v${ver}`;
+}
+
 const publishArgs = [
   "package",
   "publish",
@@ -46,7 +61,7 @@ const publishArgs = [
   "--version",
   version,
   "--changelog",
-  "v1.3.0: identyclaw_create_hola via @identyclaw/hola-client; verify expectedRecipient; New-Token JWT cache"
+  readChangelogSummary(version)
 ];
 // ClawScan publisher notes were removed from the ClawHub API (clawhub #2432); do not pass --clawscan-note.
 if (dryRun) publishArgs.push("--dry-run");

@@ -16,7 +16,7 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 
 const require = createRequire(import.meta.url);
-const { createHola } = require("@identyclaw/hola-client");
+const { createHola } = require("@rodit/hola-client");
 
 const baseUrl = process.env.IDENTYCLAW_BASE_URL || "https://api.identyclaw.com";
 let jwt = process.env.IDENTYCLAW_JWT || "";
