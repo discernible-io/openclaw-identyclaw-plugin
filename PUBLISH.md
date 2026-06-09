@@ -1,6 +1,17 @@
 # ClawHub publish checklist
 
-Maintainer guide for publishing `@identyclaw/openclaw-identyclaw-plugin` to ClawHub.
+Maintainer guide for publishing **both** IdentyClaw ClawHub artifacts from this repository:
+
+| Artifact | Command | ClawHub install |
+| --- | --- | --- |
+| Code plugin | `npm run publish:clawhub` | `openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin` |
+| Workflow skill | `npm run skill:publish` | `openclaw skills install clawhub:identyclaw` |
+
+Skill details: [skill/PUBLISH.md](./skill/PUBLISH.md).
+
+---
+
+## Plugin (`@identyclaw/openclaw-identyclaw-plugin`)
 
 This is **ClawHub registry login** — unrelated to IdentyClaw API login or HOLA. See [README.md](./README.md) for IdentyClaw’s two authentication lanes.
 

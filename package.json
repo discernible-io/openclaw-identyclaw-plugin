@@ -19,7 +19,10 @@
     "smoke:test": "node ./scripts/smoke-test.mjs",
     "smoke:test:mock": "MOCK_FETCH=1 node ./scripts/smoke-test.mjs",
     "publish:clawhub:dry-run": "node ./scripts/publish-clawhub.mjs --dry-run",
-    "publish:clawhub": "node ./scripts/publish-clawhub.mjs"
+    "publish:clawhub": "node ./scripts/publish-clawhub.mjs",
+    "skill:sync": "node ./skill/scripts/sync-references.mjs",
+    "skill:publish:dry-run": "node ./skill/scripts/publish-clawhub.mjs --dry-run",
+    "skill:publish": "node ./skill/scripts/publish-clawhub.mjs"
   },
   "dependencies": {
     "@rodit/hola-client": "file:./hola-client",

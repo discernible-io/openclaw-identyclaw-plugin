@@ -4,11 +4,11 @@ OpenClaw **code plugin** that exposes IdentyClaw HTTP API endpoints as agent too
 
 **Complementary artifacts** (from [OpenClaw integration guide](https://github.com/discernible-io/idclawserver-idc/blob/main/references/openclaw-integration-guide.md)):
 
-| Artifact | Install | Source |
+| Artifact | Install | Source in this repo |
 | --- | --- | --- |
-| Skill (workflows) | `openclaw skills install clawhub:identyclaw` | [`identyclaw-skill/SKILL.md`](https://github.com/discernible-io/idclawserver-idc/blob/main/identyclaw-skill/SKILL.md) |
-| Plugin (this repo) | `openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin` | This repository |
-| MCP (canonical docs) | `https://api.identyclaw.com/mcp` | `doc:reference:login-authentication`, `doc:reference:hola-howto`, `doc:skills` |
+| Skill (workflows) | `openclaw skills install clawhub:identyclaw` | [`skill/SKILL.md`](./skill/SKILL.md) |
+| Plugin (tools) | `openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin` | Root `package.json` / `index.ts` |
+| MCP (canonical docs) | `https://api.identyclaw.com/mcp` | Synced into skill bundle from idclawserver-idc `references/` |
 
 ---
 
@@ -218,7 +218,20 @@ npm run plugin:validate
 
 ## Publish to ClawHub
 
-See [PUBLISH.md](./PUBLISH.md).
+**Plugin** — see [PUBLISH.md](./PUBLISH.md):
+
+```bash
+npm run publish:clawhub:dry-run
+npm run publish:clawhub
+```
+
+**Skill** — see [skill/PUBLISH.md](./skill/PUBLISH.md) (requires `../idclawserver-idc/references` or `IDENTYCLAW_REFERENCES`):
+
+```bash
+npm run skill:sync
+npm run skill:publish:dry-run
+npm run skill:publish
+```
 
 ---
 
