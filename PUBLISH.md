@@ -70,7 +70,9 @@ npx clawhub publisher create identyclaw --display-name "IdentyClaw"
 npm run publish:clawhub:dry-run
 ```
 
-Expected: family `code-plugin`, version from `package.json`, files `dist/index.js`, `openclaw.plugin.json`, `package.json`, `README.md`, `LICENSE`.
+Expected: family `code-plugin`, version from `package.json`, files `dist/index.js`, `hola-client/` (vendored `@rodit/hola-client`), `openclaw.plugin.json`, `package.json`, `README.md`, `LICENSE`.
+
+`prepare:publish` runs `scripts/verify-pack.mjs` to ensure `hola-client` is in the npm pack — required for OpenClaw’s install dependency scan (ClawHub installs fail without it).
 
 ## Publish
 

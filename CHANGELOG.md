@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.1 — 2026-06-12
+
+- ClawHub install fix: ship vendored `hola-client/` in the publish tarball so `file:./hola-client` resolves inside the extension tree (OpenClaw dependency scan no longer blocks on a broken `@rodit/hola-client` symlink).
+- Exclude hola-client tests and temp credential fixtures from the published package.
+
+## 1.5.0 — 2026-06-11
+
+- Add `identyclaw_generate_near_account` tool for creating NEAR implicit accounts with allowlisted output directories.
+
 ## 1.4.0 — 2026-06-09
 
 - Add `skill/` bundle with `skill:sync` and `skill:publish` (ClawHub workflow skill from this repo).
