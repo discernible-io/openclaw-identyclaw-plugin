@@ -1,4 +1,7 @@
 import { createRequire } from "node:module";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import nacl from "tweetnacl";
 import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
@@ -44,6 +47,7 @@ type RuntimeConfig = {
   nearPrivateKey?: string;
   nearCredentialsOutputDirs?: string[];
   generateNearAccountDefaultDir?: string;
+  generateNearAccountOnInstall?: boolean;
 };
 
 const configSchema = Type.Object(
@@ -72,6 +76,12 @@ const configSchema = Type.Object(
       Type.String({
         description:
           "Default output directory for identyclaw_generate_near_account when outputDir is omitted"
+      })
+    ),
+    generateNearAccountOnInstall: Type.Optional(
+      Type.Boolean({
+        description:
+          "When true (default), create NEAR credentials on first gateway startup if accountid/nearPrivateKey are unset and no credential file exists yet"
       })
     )
   },
@@ -157,8 +167,63 @@ function resolveConfig(pluginConfig: Record<string, unknown>): RuntimeConfig {
     generateNearAccountDefaultDir:
       typeof pluginConfig.generateNearAccountDefaultDir === "string"
         ? pluginConfig.generateNearAccountDefaultDir
-        : process.env.IDENTYCLAW_NEAR_CREDENTIALS_DIR
+        : process.env.IDENTYCLAW_NEAR_CREDENTIALS_DIR,
+    generateNearAccountOnInstall:
+      typeof pluginConfig.generateNearAccountOnInstall === "boolean"
+        ? pluginConfig.generateNearAccountOnInstall
+        : true
   };
+}
+
+function resolveBootstrapOutputDir(cfg: RuntimeConfig): string {
+  return (
+    cfg.generateNearAccountDefaultDir?.trim() ||
+    process.env.IDENTYCLAW_NEAR_CREDENTIALS_DIR?.trim() ||
+    path.join(os.homedir(), ".openclaw", "secrets", "near-credentials")
+  );
+}
+
+function hasExistingNearCredentials(outputDir: string): boolean {
+  try {
+    if (!fs.existsSync(outputDir)) {
+      return false;
+    }
+    return fs.readdirSync(outputDir).some((name) => name.endsWith(".json"));
+  } catch {
+    return false;
+  }
+}
+
+function maybeGenerateNearAccountOnInstall(
+  cfg: RuntimeConfig,
+  log: (message: string) => void
+): void {
+  if (cfg.generateNearAccountOnInstall === false) {
+    return;
+  }
+  if (cfg.accountid || cfg.nearPrivateKey) {
+    return;
+  }
+
+  const outputDir = resolveBootstrapOutputDir(cfg);
+  if (hasExistingNearCredentials(outputDir)) {
+    return;
+  }
+
+  try {
+    const result = writeNearCredentialsFile(outputDir, {
+      allowedOutputDirs: cfg.nearCredentialsOutputDirs
+    });
+    log(
+      `IdentyClaw: NEAR implicit account created: ${result.implicit_account_id} (credentials: ${result.filePath})`
+    );
+    log(
+      "IdentyClaw: Purchase a Passport at https://purchase.identyclaw.com, then restart the gateway to sync credentials."
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log(`IdentyClaw: NEAR account bootstrap skipped: ${message}`);
+  }
 }
 
 function getNearSigningSecretKey(nearPrivateKey: string): Uint8Array {
@@ -266,7 +331,8 @@ async function apiPost(path: string, body: unknown, cfg: RuntimeConfig, auth = f
   return resp.json();
 }
 
-export default defineToolPlugin({
+export default (() => {
+  const plugin = defineToolPlugin({
   id: "identyclaw-tools",
   name: "IdentyClaw Tools",
   description: "OpenClaw agent tools for the IdentyClaw HTTP API",
@@ -500,4 +566,15 @@ export default defineToolPlugin({
       }
     })
   ]
-});
+  });
+
+  const baseRegister = plugin.register.bind(plugin);
+  plugin.register = (api) => {
+    baseRegister(api);
+    maybeGenerateNearAccountOnInstall(resolveConfig(api.pluginConfig ?? {}), (message) => {
+      api.logger.info(message);
+    });
+  };
+
+  return plugin;
+})();

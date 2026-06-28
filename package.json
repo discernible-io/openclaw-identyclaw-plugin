@@ -1,13 +1,18 @@
 {
   "name": "@identyclaw/openclaw-identyclaw-plugin",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "license": "MIT-0",
   "type": "module",
   "description": "OpenClaw plugin exposing IdentyClaw API agent tools",
   "main": "./dist/index.js",
+  "bin": {
+    "identyclaw-generate-near-account": "./scripts/generate-near-account.mjs"
+  },
   "files": [
     "dist",
     "hola-client",
+    "scripts/generate-near-account.mjs",
+    "scripts/postinstall-generate-near-account.mjs",
     "openclaw.plugin.json",
     "README.md",
     "LICENSE"
@@ -17,6 +22,7 @@
     "plugin:build": "node ./scripts/invoke-openclaw.mjs plugins build --entry ./dist/index.js",
     "plugin:validate": "node ./scripts/invoke-openclaw.mjs plugins validate --entry ./dist/index.js",
     "prepare:publish": "npm run build && npm run plugin:build && npm run plugin:validate && node ./scripts/verify-pack.mjs",
+    "postinstall": "node ./scripts/postinstall-generate-near-account.mjs",
     "smoke:test": "node ./scripts/smoke-test.mjs",
     "smoke:test:mock": "MOCK_FETCH=1 node ./scripts/smoke-test.mjs",
     "generate-near-account": "node ./scripts/generate-near-account.mjs",

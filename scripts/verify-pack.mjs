@@ -18,7 +18,12 @@ if (pack.status !== 0) {
 }
 
 const output = `${pack.stdout}\n${pack.stderr}`;
-const required = ["hola-client/index.js", "hola-client/lib/"];
+const required = [
+  "hola-client/index.js",
+  "hola-client/lib/",
+  "scripts/generate-near-account.mjs",
+  "scripts/postinstall-generate-near-account.mjs"
+];
 const forbidden = [
   "hola-client/test/",
   "hola-client/.near-write-test-",
@@ -40,4 +45,4 @@ for (const entry of forbidden) {
   }
 }
 
-console.log("[verify-pack] OK — hola-client vendored in publish tarball");
+console.log("[verify-pack] OK — hola-client and generate-near-account scripts vendored in publish tarball");

@@ -63,11 +63,14 @@ Create a NEAR implicit account without installing the `gennearaccount` C binary.
 
 ### Operator CLI (recommended)
 
-From a plugin checkout:
+From a plugin checkout or after install:
 
 ```bash
 npm run generate-near-account -- /path/to/secrets/near-credentials
-# or default: ./secrets/near-credentials
+# installed package:
+identyclaw-generate-near-account /path/to/secrets/near-credentials
+# default when installed: ~/.openclaw/secrets/near-credentials
+# default in checkout: ./secrets/near-credentials
 # env: IDENTYCLAW_NEAR_CREDENTIALS_DIR
 ```
 
@@ -78,6 +81,8 @@ npm run generate-near-account -- ~/identyclaw-agents-app/agents/agent-a/secrets/
 ```
 
 Then purchase a Passport at https://purchase.identyclaw.com for the printed account id, restart the gateway (or `./identyclaw.sh restart agent-a`) so bootstrap syncs `IDENTYCLAW_*` into `.env` and plugin config.
+
+On first gateway startup after install, the plugin also bootstraps a NEAR account when `accountid` / `nearPrivateKey` are unset and no credential JSON exists yet (disable with `generateNearAccountOnInstall: false`). OpenClaw plugin installs skip npm lifecycle scripts, so this startup bootstrap is the ClawHub-safe install path.
 
 ### Optional agent tool
 
@@ -159,6 +164,7 @@ Enable optional tools in OpenClaw config:
 | `accountid` | `IDENTYCLAW_ACCOUNT_ID` | API login identifier (64-char hex NEAR implicit account) |
 | `nearPrivateKey` | `IDENTYCLAW_NEAR_PRIVATE_KEY` | API login signature + `identyclaw_create_hola` local signing |
 | `generateNearAccountDefaultDir` | `IDENTYCLAW_NEAR_CREDENTIALS_DIR` | Default directory for `identyclaw_generate_near_account` |
+| `generateNearAccountOnInstall` | — | Auto-create NEAR credentials on first startup when unset (default `true`) |
 | `nearCredentialsOutputDirs` | — | Extra allowlisted output dirs for account generation tool |
 
 Deprecated config alias: `roditid` → use `accountid`.

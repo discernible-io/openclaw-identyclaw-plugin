@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2 — 2026-06-28
+
+- Ship `scripts/generate-near-account.mjs` and `identyclaw-generate-near-account` bin in the published package.
+- Add first-startup NEAR account bootstrap when credentials are missing (`generateNearAccountOnInstall`, default true).
+- Add npm `postinstall` helper for non-OpenClaw installs; ClawHub installs use the startup bootstrap because OpenClaw skips lifecycle scripts.
+
 ## 1.5.1 — 2026-06-12
 
 - ClawHub install fix: ship vendored `hola-client/` in the publish tarball so `file:./hola-client` resolves inside the extension tree (OpenClaw dependency scan no longer blocks on a broken `@rodit/hola-client` symlink).

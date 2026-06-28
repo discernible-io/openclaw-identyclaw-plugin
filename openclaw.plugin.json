@@ -35,10 +35,14 @@
       "generateNearAccountDefaultDir": {
         "description": "Default output directory for identyclaw_generate_near_account when outputDir is omitted",
         "type": "string"
+      },
+      "generateNearAccountOnInstall": {
+        "description": "When true (default), create NEAR credentials on first gateway startup if accountid/nearPrivateKey are unset and no credential file exists yet",
+        "type": "boolean"
       }
     }
   },
-  "version": "1.5.1",
+  "version": "1.5.2",
   "contracts": {
     "tools": [
       "identyclaw_list_agents",
