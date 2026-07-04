@@ -1,21 +1,106 @@
-# IdentyClaw OpenClaw Plugin
+# IdentyClaw Tools Gateway Component
 
-OpenClaw **code plugin** that exposes IdentyClaw HTTP API endpoints as agent tools: discovery, Passport identity, **API session login**, **HOLA** create/verify, subagent delegation, DID resolution, and MCP-style documentation resources.
+> **IdentyClaw component service:** OpenClaw plugin that exposes the IdentyClaw HTTP API as agent tools — discovery, Passport identity, **API session login**, **HOLA** create/verify, subagent delegation, DID resolution, and MCP-style documentation resources. API login and HOLA flows follow the same contract as [`idclawserver-idc`](https://github.com/discernible-io/idclawserver-idc) (via vendored [`@rodit/hola-client`](./hola-client/) for HOLA signing — not the full server). See [`openclaw-integration-guide.md`](https://github.com/discernible-io/idclawserver-idc/blob/main/references/openclaw-integration-guide.md).
 
-**Complementary artifacts** (from [OpenClaw integration guide](https://github.com/discernible-io/idclawserver-idc/blob/main/references/openclaw-integration-guide.md)):
+[![GitHub](https://img.shields.io/github/stars/discernible-io/openclaw-identyclaw-plugin?style=social)](https://github.com/discernible-io/openclaw-identyclaw-plugin) [![npm version](https://img.shields.io/npm/v/@identyclaw/openclaw-identyclaw-plugin.svg?label=npm)](https://www.npmjs.com/package/@identyclaw/openclaw-identyclaw-plugin) [![License](https://img.shields.io/github/license/discernible-io/openclaw-identyclaw-plugin)](https://github.com/discernible-io/openclaw-identyclaw-plugin/blob/main/LICENSE) [![HOLA](https://img.shields.io/badge/auth-HOLA%20%2B%20JWT-a78bfa)](https://github.com/discernible-io/idclawserver-idc/blob/main/references/hola-agent-authentication.md) [![Passport API](https://img.shields.io/badge/API-idclawserver--idc-14b8a6)](https://github.com/discernible-io/idclawserver-idc)
 
-| Artifact | Install | Source |
+<p align="center">
+  <img src="images/identyclaw-tools-ecosystem.svg" alt="IdentyClaw stack: OpenClaw gateway, this tools component, and idclawserver-idc API contract" width="960"/>
+</p>
+
+## Role in the IdentyClaw stack
+
+| Layer | Artifact | Responsibility |
 | --- | --- | --- |
-| Skill (workflows) | `openclaw skills install clawhub:identyclaw` | [`skill/SKILL.md`](./skill/SKILL.md) in this repo |
-| Plugin (tools) | `openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin` | Root `package.json` / `index.ts` in this repo |
-| A2A plugin (peer messaging) | `openclaw plugins install clawhub:@identyclaw/openclaw-a2a-plugin` | [`openclaw-a2a-idc-plugin`](https://github.com/discernible-io/openclaw-a2a-idc-plugin) — RODiT JWT wire auth for agent-to-agent messaging (`a2a_*` tools) |
-| MCP (canonical docs) | `https://api.identyclaw.com/mcp` | Synced into skill bundle from idclawserver-idc `references/` |
+| **Identity & HOLA (this repo)** | **`identyclaw-tools`** | API login, DID, HOLA create/verify, identity lookup, MCP resource tools |
+| Passport API (reference) | [`idclawserver-idc`](https://github.com/discernible-io/idclawserver-idc) | JWT issuance contract, `POST /api/login`, HOLA verify, token metadata |
+| A2A wire protocol | [`openclaw-a2a-idc-plugin`](https://github.com/discernible-io/openclaw-a2a-idc-plugin) | Agent Card discovery, `POST /a2a`, inbound JWT validation, outbound P2P login |
+| Agent runtime | [OpenClaw](https://openclaw.ai) gateway | Chat, hooks, sandbox, tool execution |
 
----
+Install this plugin when Passport-authenticated agents need **IdentyClaw API login, HOLA peer trust, identity discovery, or DID resolution** — not for A2A peer messaging (use `identyclaw-a2a` for that). NEAR Passport credentials use the same file layout as [`clienttest-idc`](https://github.com/discernible-io/clienttest-idc) and identyclaw-agents bootstrap.
 
-## Two lanes — do not mix them
+Your agent gets `identyclaw_*` tools for IdentyClaw HTTP without hand-rolling login signatures or HOLA lines:
 
-IdentyClaw uses **two separate authentication mechanisms**. This plugin implements both, but they are not interchangeable.
+- `identyclaw_list_agents` / `identyclaw_list_resources` / `identyclaw_get_resource` for public discovery and MCP docs
+- `identyclaw_get_my_identity` / `identyclaw_get_agent_identity` / `identyclaw_resolve_did` for Passport identity
+- `identyclaw_get_nonce` / `identyclaw_create_hola` / `identyclaw_verify_hola` for HOLA peer authentication
+- `identyclaw_check_subagent_signer` for delegation authorization checks
+- `identyclaw_generate_near_account` (optional) for operator NEAR account creation on the gateway host
+
+The plugin **auto-logins** when protected tools run: `GET /api/login/timestamp` → sign login payload → `POST /api/login` → cache `jwt_token` until near expiry; applies `New-Token` response headers when present.
+
+## 📦 Installation
+
+From ClawHub:
+
+```bash
+openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin
+```
+
+From npm:
+
+```bash
+openclaw plugins install @identyclaw/openclaw-identyclaw-plugin
+```
+
+Local checkout (after `npm run prepare:publish`):
+
+```bash
+openclaw plugins install /path/to/openclaw-identyclaw-plugin
+```
+
+Restart the gateway:
+
+```bash
+openclaw gateway restart
+```
+
+Enable optional tools in OpenClaw config (see [Configuration](#-configuration) and [Tools](#-tools)):
+
+```json5
+{
+  plugins: {
+    entries: {
+      "identyclaw-tools": {
+        enabled: true,
+        config: {
+          baseUrl: "https://api.identyclaw.com",
+          accountid: "<64-char-hex-near-implicit-account>",
+          nearPrivateKey: "ed25519:..."
+        }
+      }
+    }
+  },
+  tools: {
+    allow: [
+      "identyclaw_get_my_identity",
+      "identyclaw_get_nonce",
+      "identyclaw_create_hola",
+      "identyclaw_verify_hola",
+      "identyclaw_get_agent_identity",
+      "identyclaw_check_subagent_signer",
+      "identyclaw_resolve_did"
+    ]
+  }
+}
+```
+
+### Related IdentyClaw artifacts
+
+| Artifact | Install / link | Role |
+| --- | --- | --- |
+| **This plugin** (`identyclaw-tools`) | `openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin` | API login, HOLA, identity, DID, MCP resource tools |
+| Passport server (reference) | [`idclawserver-idc`](https://github.com/discernible-io/idclawserver-idc) | Canonical JWT, HOLA, and API contract this plugin calls |
+| A2A component | `openclaw plugins install clawhub:@identyclaw/openclaw-a2a-plugin` | A2A send/receive — [`openclaw-a2a-idc-plugin`](https://github.com/discernible-io/openclaw-a2a-idc-plugin) |
+| Outbound client (reference) | [`clienttest-idc`](https://github.com/discernible-io/clienttest-idc) | Credential file layout and `login_server` caller patterns |
+| Skill (workflows) | `openclaw skills install clawhub:identyclaw` | Operator playbooks — [`skill/SKILL.md`](./skill/SKILL.md) in this repo |
+| MCP (canonical docs) | `https://api.identyclaw.com/mcp` | Live IdentyClaw API documentation |
+
+`identyclaw-tools` and `identyclaw-a2a` can share `IDENTYCLAW_ACCOUNT_ID`, `IDENTYCLAW_NEAR_PRIVATE_KEY`, and `IDENTYCLAW_BASE_URL`. HOLA stays application-layer via `identyclaw_*` tools; A2A peer calls use Passport JWTs through the A2A component.
+
+## 🔐 Two lanes — do not mix them
+
+IdentyClaw uses **two separate authentication mechanisms**. This plugin implements both, but they are not interchangeable. Vocabulary matches [`idclawserver-idc`](https://github.com/discernible-io/idclawserver-idc#vocabulary-api-login-vs-hola).
 
 | Lane | Artifact | Typical TTL | Signed payload | IdentyClaw docs |
 | --- | --- | --- | --- | --- |
@@ -38,26 +123,18 @@ A JWT is **not** a HOLA line. HOLA tools need an API session only so the plugin 
 | `GET /api/login/timestamp` | `timestamp`, `timestamp_iso` | API login signing only |
 | `GET /api/holanonce16ts` | `noncetsHex`, `timestamp` | HOLA line construction only — see [holanonce-api.md](https://github.com/discernible-io/idclawserver-idc/blob/main/references/holanonce-api.md) |
 
----
+### `nearPrivateKey` on the Gateway host
 
-## What this plugin does
-
-- **Public tools** — no API session: list agents, list/fetch MCP resources.
-- **API session tools** — auto-login (or env-provided bearer token), then call protected routes: identity, agent lookup, DID resolve, subagent signer check.
-- **HOLA tools** — require API session **plus** HOLA protocol steps: fetch nonce, sign a line locally (`identyclaw_create_hola`), or submit a peer line to `POST /api/identity/verify` (`identyclaw_verify_hola`).
-
-The plugin **auto-logins** when protected tools run: `GET /api/login/timestamp` → sign login payload → `POST /api/login` → cache `jwt_token` until near expiry; applies `New-Token` response headers when present.
-
-**`nearPrivateKey` on the Gateway host** is used for **two different signatures** (same NEAR key, different messages and encodings):
+The same NEAR key signs **two different messages** (different encodings):
 
 1. **API login** — UTF-8 `accountid` + `timestamp_iso` → **base64url** signature on `POST /api/login`.
 2. **HOLA create** — uppercase canonical HOLA prefix → **base32** line signature (via `@rodit/hola-client`). Never sent to HTTP endpoints except inside the finished HOLA string you deliver to peers or verify endpoints.
 
-`identyclaw_verify_hola` does **not** need `nearPrivateKey` — only an API session and the peer’s HOLA line.
+`identyclaw_verify_hola` does **not** need `nearPrivateKey` — only an API session and the peer's HOLA line.
 
----
+Keep credentials in env or secrets files — not in `openclaw.json`.
 
-## NEAR account generation (v1.5.0+)
+## 🔑 NEAR account generation (v1.5.0+)
 
 Create a NEAR implicit account without installing the `gennearaccount` C binary. Credentials are written as gennearaccount-compatible JSON under `secrets/near-credentials/<implicit_account_id>.json` (directory mode `0700`, file mode `0600`). **Private keys never appear in tool output or chat** — only `implicit_account_id` and `public_key` are returned.
 
@@ -108,55 +185,27 @@ Allowlist `identyclaw_generate_near_account` for advanced setups. Output path mu
 
 Returns: `implicit_account_id`, `public_key`, `filePath` — not `private_key`.
 
----
+## 💡 Use Cases
 
-## Install
+- Obtain and refresh IdentyClaw API sessions from OpenClaw without custom login code
+- Prove Passport identity to peers with outbound HOLA lines and verify inbound peer HOLA
+- Look up agent identity, DID documents, and subagent signer authorization from chat
+- Bootstrap NEAR implicit accounts and credential files on gateway hosts (identyclaw-agents layout)
+- Fetch MCP documentation resources (`doc:*`) for operator workflows alongside the ClawHub skill
+- Pair with `identyclaw-a2a` on the same host — shared NEAR creds, separate auth lanes (HOLA vs A2A JWT)
 
-From ClawHub (after `npm run prepare:publish` for local paths):
+## ✨ Features
 
-```bash
-openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin
-```
+- **Public discovery tools** — list agents and MCP resources without an API session
+- **Auto-login** — protected tools trigger `POST /api/login` with Ed25519 signing; JWT cache with `New-Token` refresh
+- **HOLA create and verify** — nonce fetch, local base32 signing (`identyclaw_create_hola`), server-side peer verification (`identyclaw_verify_hola`)
+- **Identity and DID** — `identyclaw_get_my_identity`, per-token lookup, `did:rodit` resolution
+- **Subagent delegation** — `identyclaw_check_subagent_signer` against `POST /api/isauthorizedsigner`
+- **NEAR account generation** — CLI and optional tool; startup bootstrap on first install when creds are missing
+- **Vendored HOLA client** — `@rodit/hola-client` ships in the published package (ClawHub-safe `file:` dependency)
+- **Optional tool rollout** — sensitive tools off by default; allowlist in OpenClaw config for safer deployment
 
-Local checkout:
-
-```bash
-openclaw plugins install /path/to/openclaw-identyclaw-plugin
-```
-
-Enable optional tools in OpenClaw config:
-
-```json5
-{
-  plugins: {
-    entries: {
-      "identyclaw-tools": {
-        enabled: true,
-        config: {
-          baseUrl: "https://api.identyclaw.com",
-          accountid: "<64-char-hex-near-implicit-account>",
-          nearPrivateKey: "ed25519:..."
-        }
-      }
-    }
-  },
-  tools: {
-    allow: [
-      "identyclaw_get_my_identity",
-      "identyclaw_get_nonce",
-      "identyclaw_create_hola",
-      "identyclaw_verify_hola",
-      "identyclaw_get_agent_identity",
-      "identyclaw_check_subagent_signer",
-      "identyclaw_resolve_did"
-    ]
-  }
-}
-```
-
----
-
-## Configuration
+## ⚙️ Configuration
 
 | Field | Env fallback | Used for |
 | --- | --- | --- |
@@ -173,9 +222,7 @@ For smoke tests you may pass a pre-obtained API bearer token instead of login bo
 
 - `IDENTYCLAW_JWT` — full `jwt_token` from `POST /api/login` (not a HOLA line).
 
----
-
-## Tools
+## 🧰 Tools
 
 ### Public (no API session)
 
@@ -216,9 +263,7 @@ Optional tools are off by default in the manifest; allowlist them in OpenClaw co
 
 **Trust note:** Treat a peer as authenticated only after `identyclaw_verify_hola` returns a successful verification outcome — not from checksum or signature checks alone. See [hola-agent-authentication.md § When is a HOLA validated?](https://github.com/discernible-io/idclawserver-idc/blob/main/references/hola-agent-authentication.md#when-is-a-hola-validated).
 
----
-
-## Typical flows
+## 🔄 Typical flows
 
 ### 1. API login only (identity / discovery)
 
@@ -244,9 +289,7 @@ Peer sends HOLA line  →  identyclaw_verify_hola  →  POST /api/identity/verif
 (your API session JWT authorizes the verify call; the HOLA line is the payload)
 ```
 
----
-
-## Development
+## 🛠️ Development
 
 Node **≥ 22.19** (see `.nvmrc`). From repository root:
 
@@ -277,8 +320,6 @@ npm run plugin:build
 npm run plugin:validate
 ```
 
----
-
 ## Publish to ClawHub
 
 **Plugin** — see [PUBLISH.md](./PUBLISH.md):
@@ -296,8 +337,6 @@ npm run skill:publish:dry-run
 npm run skill:publish
 ```
 
----
-
 ## Further reading (IdentyClaw server)
 
 | Topic | Reference |
@@ -309,8 +348,15 @@ npm run skill:publish
 | Subagent HOLA | [hola-subagent-authentication.md](https://github.com/discernible-io/idclawserver-idc/blob/main/references/hola-subagent-authentication.md) |
 | OpenClaw webhooks (inbound) | [openclaw-integration-guide.md](https://github.com/discernible-io/idclawserver-idc/blob/main/references/openclaw-integration-guide.md) |
 
----
-
-## License
+## 📄 License
 
 [MIT-0](./LICENSE) (MIT No Attribution). ClawHub-published releases follow registry terms on [clawhub.ai](https://clawhub.ai).
+
+## 🔗 IdentyClaw & upstream links
+
+- **This repo:** [discernible-io/openclaw-identyclaw-plugin](https://github.com/discernible-io/openclaw-identyclaw-plugin)
+- **Passport server reference:** [discernible-io/idclawserver-idc](https://github.com/discernible-io/idclawserver-idc) — JWT contract, HOLA spec, OpenClaw integration guide
+- **A2A component:** [discernible-io/openclaw-a2a-idc-plugin](https://github.com/discernible-io/openclaw-a2a-idc-plugin) — Passport JWT peer messaging (`a2a_*` tools)
+- **Outbound client reference:** [discernible-io/clienttest-idc](https://github.com/discernible-io/clienttest-idc) — credential layout and login caller patterns
+- **ClawHub skill:** [clawhub.ai/identyclaw/identyclaw](https://clawhub.ai/identyclaw/identyclaw)
+- **ClawHub plugin:** [clawhub.ai/plugins/@identyclaw/openclaw-identyclaw-plugin](https://clawhub.ai/plugins/@identyclaw/openclaw-identyclaw-plugin)
