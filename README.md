@@ -250,7 +250,7 @@ Requires API session. Create also requires `nearPrivateKey` on the Gateway.
 | Tool | Role | IdentyClaw doc |
 | --- | --- | --- |
 | `identyclaw_get_nonce` | Fetch `noncetsHex` + `timestamp` for manual HOLA builds | [holanonce-api.md](https://github.com/discernible-io/idclawserver-idc/blob/main/references/holanonce-api.md) |
-| `identyclaw_create_hola` | Nonce + local sign → outbound **HOLA line** (`@rodit/hola-client`) | [hola-howto.md](https://github.com/discernible-io/idclawserver-idc/blob/main/references/hola-howto.md) steps 2–3 |
+| `identyclaw_create_hola` | Nonce + local sign → outbound **HOLA line** (`@rodit/hola-client`); signer from `GET /api/me/identity`, optional `recipient` only | [hola-howto.md](https://github.com/discernible-io/idclawserver-idc/blob/main/references/hola-howto.md) steps 2–3 |
 | `identyclaw_verify_hola` | `POST /api/identity/verify` for a peer **HOLA line** | [hola-howto.md](https://github.com/discernible-io/idclawserver-idc/blob/main/references/hola-howto.md) step 5 |
 
 ### Account generation (no API session)

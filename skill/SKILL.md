@@ -5,7 +5,7 @@ description: >-
   DID resolution, and Passport lookup. Requires an IdentyClaw Passport on the Gateway.
   Use when creating or verifying HOLA lines, obtaining an API session, resolving
   Passport IDs, enrolling on NEAR, or reading agent discovery metadata.
-version: 1.4.0
+version: 1.5.0
 metadata:
   openclaw:
     envVars:
@@ -147,6 +147,14 @@ Full steps: [`references/login-authentication.md`](references/login-authenticati
 HOLA/<recipient>/<tokenId>/<timestamp>/<noncetsHex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>
 ```
 
+**Outbound HOLA rules (agents):**
+
+- **Signer / origin** is always **this agent's Passport ID** — resolved from `GET /api/me/identity`.
+- Call **`identyclaw_create_hola`** without `tokenId`, or call **`identyclaw_get_my_identity`** first if you need your ID for other steps.
+- **Never ask the user for your own Passport ID** to create an outbound HOLA line.
+- **Only `recipient`** may be user-supplied (peer Passport ID or `MUNDO` for broadcast intros).
+- **Subagent delegation** uses a different HOLA wire format — see [`references/hola-subagent-authentication.md`](references/hola-subagent-authentication.md); do not substitute another agent's ID in standard outbound HOLA.
+
 Walkthrough: [`references/hola-howto.md`](references/hola-howto.md). Self-test: `POST /api/testhola`.
 
 ### 3. Verify an incoming HOLA line
@@ -213,7 +221,7 @@ Plugin **v1.4.0+** · tool reference: [README.md](https://github.com/discernible
 | Tool | Notes |
 | --- | --- |
 | `identyclaw_get_nonce` | `GET /api/holanonce16ts` — HOLA nonce fields |
-| `identyclaw_create_hola` | API session + local HOLA sign (`nearPrivateKey`) |
+| `identyclaw_create_hola` | API session + local HOLA sign (`nearPrivateKey`); signer from `/api/me/identity`, optional `recipient` only |
 | `identyclaw_verify_hola` | API session + peer HOLA line → `POST /api/identity/verify` |
 
 Allowlist optional tools in `tools.allow` when credentials are configured.

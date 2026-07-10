@@ -42,7 +42,7 @@
       }
     }
   },
-  "version": "1.5.2",
+  "version": "1.5.3",
   "contracts": {
     "tools": [
       "identyclaw_list_agents",

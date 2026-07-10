@@ -230,12 +230,7 @@ function getNearSigningSecretKey(nearPrivateKey: string): Uint8Array {
   return nearPrivateKeyToSigningSecretKey(nearPrivateKey);
 }
 
-async function resolveCallerTokenId(cfg: RuntimeConfig, explicit?: string): Promise<string> {
-  const trimmed = explicit?.trim().toLowerCase();
-  if (trimmed && /^[a-z]{12}$/.test(trimmed)) {
-    return trimmed;
-  }
-
+async function getCallerTokenId(cfg: RuntimeConfig): Promise<string> {
   const identity = (await apiGet("/api/me/identity", cfg, true)) as { tokenId?: string };
   const fromIdentity = identity?.tokenId?.trim().toLowerCase();
   if (fromIdentity && /^[a-z]{12}$/.test(fromIdentity)) {
@@ -243,7 +238,7 @@ async function resolveCallerTokenId(cfg: RuntimeConfig, explicit?: string): Prom
   }
 
   throw new Error(
-    "Could not resolve caller tokenId — pass tokenId or ensure GET /api/me/identity returns a 12-letter tokenId"
+    "Could not resolve caller Passport ID — use identyclaw_get_my_identity first or ensure GET /api/me/identity returns a 12-letter tokenId"
   );
 }
 
@@ -383,16 +378,12 @@ export default (() => {
       name: "identyclaw_create_hola",
       label: "Create HOLA",
       description:
-        "HOLA lane: fetch nonce (API session JWT) then sign outbound HOLA line locally with nearPrivateKey (base32 line signature — separate from API login base64url signature). Returns hola wire string for peers.",
+        "HOLA lane: fetch nonce (API session JWT) then sign outbound HOLA line locally with nearPrivateKey (base32 line signature — separate from API login base64url signature). Signer/origin is always this agent's Passport ID from GET /api/me/identity — only recipient may be supplied. Returns hola wire string for peers.",
       parameters: Type.Object({
         recipient: Type.Optional(
           Type.String({
-            description: "HOLA recipient token ID (default MUNDO for broadcast intros)"
-          })
-        ),
-        tokenId: Type.Optional(
-          Type.String({
-            description: "Signer Passport ID (12 lowercase letters); defaults to caller identity from GET /api/me/identity"
+            description:
+              "HOLA recipient Passport ID (default MUNDO for broadcast intros); the only user-supplied field"
           })
         )
       }),
@@ -405,7 +396,7 @@ export default (() => {
           );
         }
         const jwt = await getJwt(cfg);
-        const tokenId = await resolveCallerTokenId(cfg, params.tokenId);
+        const tokenId = await getCallerTokenId(cfg);
         return createHola({
           baseUrl: cfg.baseUrl,
           jwt,

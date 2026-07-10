@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.3 — 2026-07-10
+
+- **`identyclaw_create_hola`:** drop `tokenId` from the agent-facing tool schema; signer is always resolved from `GET /api/me/identity`.
+- **Skill v1.5.0:** explicit outbound-HOLA rules — never ask the user for your own Passport ID; only `recipient` may be user-supplied.
+
 ## 1.5.2 — 2026-06-28
 
 - Ship `scripts/generate-near-account.mjs` and `identyclaw-generate-near-account` bin in the published package.
