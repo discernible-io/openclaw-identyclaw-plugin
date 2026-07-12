@@ -1,12 +1,33 @@
 # IdentyClaw Tools Gateway Component
 
+**OpenClaw plugin — IdentyClaw API login, HOLA, identity, DID tools**
+
+Part of [IdentyClaw](https://www.discernible.io/#developers).
+
 > **IdentyClaw component service:** OpenClaw plugin that exposes the IdentyClaw HTTP API as agent tools — discovery, Passport identity, **API session login**, **HOLA** create/verify, subagent delegation, DID resolution, and MCP-style documentation resources. API login and HOLA flows follow the same contract as [`idclawserver-idc`](https://github.com/discernible-io/idclawserver-idc) (via vendored [`@rodit/hola-client`](./hola-client/) for HOLA signing — not the full server). See [`openclaw-integration-guide.md`](https://github.com/discernible-io/idclawserver-idc/blob/main/references/openclaw-integration-guide.md).
 
-[![GitHub](https://img.shields.io/github/stars/discernible-io/openclaw-identyclaw-plugin?style=social)](https://github.com/discernible-io/openclaw-identyclaw-plugin) [![npm version](https://img.shields.io/npm/v/@identyclaw/openclaw-identyclaw-plugin.svg?label=npm)](https://www.npmjs.com/package/@identyclaw/openclaw-identyclaw-plugin) [![License](https://img.shields.io/github/license/discernible-io/openclaw-identyclaw-plugin)](https://github.com/discernible-io/openclaw-identyclaw-plugin/blob/main/LICENSE) [![HOLA](https://img.shields.io/badge/auth-HOLA%20%2B%20JWT-a78bfa)](https://github.com/discernible-io/idclawserver-idc/blob/main/references/hola-agent-authentication.md) [![Passport API](https://img.shields.io/badge/API-idclawserver--idc-14b8a6)](https://github.com/discernible-io/idclawserver-idc)
+[![npm version](https://img.shields.io/npm/v/@identyclaw/openclaw-identyclaw-plugin.svg?label=npm)](https://www.npmjs.com/package/@identyclaw/openclaw-identyclaw-plugin) [![ClawHub](https://img.shields.io/badge/ClawHub-@identyclaw%2Fopenclaw--identyclaw--plugin-22c55e)](https://clawhub.ai/plugins/@identyclaw/openclaw-identyclaw-plugin) [![GitHub](https://img.shields.io/github/stars/discernible-io/openclaw-identyclaw-plugin?style=social)](https://github.com/discernible-io/openclaw-identyclaw-plugin) [![License](https://img.shields.io/github/license/discernible-io/openclaw-identyclaw-plugin)](https://github.com/discernible-io/openclaw-identyclaw-plugin/blob/main/LICENSE) [![HOLA](https://img.shields.io/badge/auth-HOLA%20%2B%20JWT-a78bfa)](https://github.com/discernible-io/idclawserver-idc/blob/main/references/hola-agent-authentication.md) [![Passport API](https://img.shields.io/badge/API-idclawserver--idc-14b8a6)](https://github.com/discernible-io/idclawserver-idc)
+
+> [!IMPORTANT]
+> **Production deploy:** For nginx TLS, A2A peer messaging, signed webhooks, and GitHub Actions CI, use **[identyclaw-agents](https://github.com/discernible-io/identyclaw-agents)** instead of wiring plugins manually on the gateway host.
 
 <p align="center">
   <img src="images/identyclaw-tools-ecosystem.svg" alt="IdentyClaw stack: OpenClaw gateway, this tools component, and idclawserver-idc API contract" width="960"/>
 </p>
+
+## Quick start
+
+Four steps to go from zero to a Passport-enrolled gateway (à la carte install — see the production callout above for the full stack template):
+
+```bash
+openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin
+openclaw gateway restart
+identyclaw-generate-near-account
+```
+
+Purchase a Passport at [purchase.identyclaw.com](https://purchase.identyclaw.com) for the printed `implicit_account_id`, then restart the gateway so bootstrap syncs `IDENTYCLAW_*` into plugin config. On first startup with no credentials yet, the plugin can also auto-generate a NEAR account (ClawHub-safe — OpenClaw skips npm lifecycle scripts).
+
+Details: [Installation](#-installation) · [NEAR account generation](#-near-account-generation-v150) · [Configuration](#-configuration) · [Tools](#-tools)
 
 ## Role in the IdentyClaw stack
 
@@ -136,7 +157,9 @@ Keep credentials in env or secrets files — not in `openclaw.json`.
 
 ## 🔑 NEAR account generation (v1.5.0+)
 
-Create a NEAR implicit account without installing the `gennearaccount` C binary. Credentials are written as gennearaccount-compatible JSON under `secrets/near-credentials/<implicit_account_id>.json` (directory mode `0700`, file mode `0600`). **Private keys never appear in tool output or chat** — only `implicit_account_id` and `public_key` are returned.
+Create a NEAR implicit account with the Node CLI or optional agent tool in this plugin. Credentials are written as gennearaccount-compatible JSON under `secrets/near-credentials/<implicit_account_id>.json` (directory mode `0700`, file mode `0600`). **Private keys never appear in tool output or chat** — only `implicit_account_id` and `public_key` are returned.
+
+On hosts without Node, build and run **[gennearaccount](https://github.com/discernible-io/gennearaccount)** instead — the C CLI writes the same JSON credential layout to `secrets/near-credentials/`.
 
 ### Operator CLI (recommended)
 
@@ -354,9 +377,14 @@ npm run skill:publish
 
 ## 🔗 IdentyClaw & upstream links
 
+[discernible.io](https://www.discernible.io/#developers) · [sdk monorepo](https://github.com/discernible-io/sdk) · [A2A plugin](https://github.com/discernible-io/openclaw-a2a-idc-plugin) · [webhooks plugin](https://github.com/discernible-io/openclaw-identyclaw-webhooks-plugin)
+
 - **This repo:** [discernible-io/openclaw-identyclaw-plugin](https://github.com/discernible-io/openclaw-identyclaw-plugin)
+- **Production template:** [discernible-io/identyclaw-agents](https://github.com/discernible-io/identyclaw-agents) — nginx TLS, A2A, webhooks, CI
 - **Passport server reference:** [discernible-io/idclawserver-idc](https://github.com/discernible-io/idclawserver-idc) — JWT contract, HOLA spec, OpenClaw integration guide
 - **A2A component:** [discernible-io/openclaw-a2a-idc-plugin](https://github.com/discernible-io/openclaw-a2a-idc-plugin) — Passport JWT peer messaging (`a2a_*` tools)
+- **Webhooks component:** [discernible-io/openclaw-identyclaw-webhooks-plugin](https://github.com/discernible-io/openclaw-identyclaw-webhooks-plugin) — RODiT-signed ingress on `/hooks/wake` and `/hooks/agent`
+- **NEAR account CLI (C):** [discernible-io/gennearaccount](https://github.com/discernible-io/gennearaccount) — same JSON output as `identyclaw-generate-near-account`
 - **Outbound client reference:** [discernible-io/clienttest-idc](https://github.com/discernible-io/clienttest-idc) — credential layout and login caller patterns
 - **ClawHub skill:** [clawhub.ai/identyclaw/identyclaw](https://clawhub.ai/identyclaw/identyclaw)
 - **ClawHub plugin:** [clawhub.ai/plugins/@identyclaw/openclaw-identyclaw-plugin](https://clawhub.ai/plugins/@identyclaw/openclaw-identyclaw-plugin)
