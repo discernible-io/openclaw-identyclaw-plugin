@@ -1,38 +1,54 @@
 ---
 name: identyclaw
 description: >-
-  IdentyClaw API workflows — API session login (JWT), HOLA peer handshake lines,
-  DID resolution, and Passport lookup. Requires an IdentyClaw Passport on the Gateway.
-  Use when creating or verifying HOLA lines, obtaining an API session, resolving
-  Passport IDs, enrolling on NEAR, or reading agent discovery metadata.
-version: 1.5.0
+  IdentyClaw API workflows — multi-API JWT sessions (auto-login), HOLA peer
+  handshake lines, DID resolution, and Passport lookup. Requires an IdentyClaw
+  Passport on the Gateway. Use when calling home or federated APIs, creating or
+  verifying HOLA lines, resolving Passport IDs, or reading agent discovery
+  metadata. For agent-to-agent A2A messaging use the separate identyclaw-a2a plugin.
+version: 1.6.0
 metadata:
   openclaw:
     envVars:
       - name: IDENTYCLAW_BASE_URL
         required: false
-        description: API base URL (default https://api.identyclaw.com)
+        description: Home API base URL (default https://api.identyclaw.com)
+      - name: IDENTYCLAW_API_ENDPOINTS
+        required: false
+        description: Comma-separated federated API URLs for concurrent sessions (e.g. https://api-b.example.com)
       - name: IDENTYCLAW_ACCOUNT_ID
         required: false
         description: NEAR implicit account id (64-char hex) for API login
       - name: IDENTYCLAW_NEAR_PRIVATE_KEY
         required: false
         description: Passport Ed25519 key (ed25519:...) — API login signature + HOLA line signing (Gateway only)
-      - name: IDENTYCLAW_JWT
-        required: false
-        description: Optional API bearer token (jwt_token from POST /api/login) — not a HOLA line
     homepage: https://api.identyclaw.com/docs
 ---
 
 # IdentyClaw
 
-**Base URL:** `https://api.identyclaw.com`
+**Home API (default):** `https://api.identyclaw.com`  
+**Federated example:** `https://api-b.example.com` (same SR/CR family; configure via `apiEndpoints`)
 
 IdentyClaw is an HTTP API for IdentyClaw Passport holders and the **HOLA** mutual authentication protocol. This skill is the **runnable cheat sheet**; deep specs live in bundled `references/` and MCP `doc:*` resources.
 
 **Live docs:** MCP `doc:discovery` · `doc:skills` · `curl https://api.identyclaw.com/api/mcp/resource/doc:skills`
 
 **ClawHub:** [identyclaw/identyclaw](https://clawhub.ai/identyclaw/identyclaw) · [OpenClaw plugin](https://clawhub.ai/plugins/@identyclaw/openclaw-identyclaw-plugin) · [Source (skill + plugin)](https://github.com/discernible-io/openclaw-identyclaw-plugin)
+
+---
+
+## Agent rule — do not hand-roll login
+
+When the **OpenClaw plugin** is installed (`identyclaw-tools`):
+
+1. **Never** curl `GET /api/login/timestamp` or `POST /api/login`, and never invent Ed25519 signatures in chat.
+2. Call **`identyclaw_ensure_session`** (optional `apiEndpoint`) or any protected `identyclaw_*` tool — the plugin auto-logins and caches a **JWT per API URL**.
+3. Pass **`apiEndpoint`** on tools when targeting a federated API; omit it for the home `baseUrl`.
+4. Use **`identyclaw_list_sessions`** to see which APIs already have a live session.
+5. **A2A P2P** (message another agent over `/a2a`) is **not** this plugin — install/use **`identyclaw-a2a`** (`openclaw-a2a-idc-plugin`). That plugin owns per-peer JWTs.
+
+Manual curl login below is for **operators / non-plugin clients only**.
 
 ---
 
@@ -47,7 +63,7 @@ IdentyClaw is an HTTP API for IdentyClaw Passport holders and the **HOLA** mutua
 
 | Clock | Source | Used for |
 | --- | --- | --- |
-| JWT **session** | `POST /api/login` | `Authorization: Bearer …` on protected routes |
+| JWT **session** | `POST /api/login` (plugin auto) | `Authorization: Bearer …` on protected routes |
 | HOLA **nonce** | `GET /api/holanonce16ts` | `noncetsHex` + `timestamp` in each HOLA line — **not** login `timestamp_iso` |
 
 | Endpoint | JSON fields | Purpose |
@@ -66,7 +82,7 @@ ClawHub’s badge means your **IdentyClaw Passport** — not a separate vendor A
 | What you configure | Role |
 | --- | --- |
 | **Passport signing key** (`accountid` + `nearPrivateKey`) | Long-lived secret on the Gateway (like an API key) |
-| **JWT** (`jwt_token`) | Short-lived **API session**; plugin auto-login usually supplies this |
+| **JWT** (`jwt_token`) | Short-lived **API session**; plugin auto-login supplies this (never paste into chat) |
 | **Public routes** | No Passport needed |
 
 **`nearPrivateKey` on the Gateway** — same NEAR key, **two signatures**:
@@ -84,6 +100,7 @@ ClawHub’s badge means your **IdentyClaw Passport** — not a separate vendor A
         enabled: true,
         config: {
           baseUrl: "https://api.identyclaw.com",
+          apiEndpoints: ["https://api-b.example.com"],
           accountid: "<64-char-hex-near-implicit-account>",
           nearPrivateKey: "ed25519:..."
         }
@@ -93,6 +110,8 @@ ClawHub’s badge means your **IdentyClaw Passport** — not a separate vendor A
 }
 ```
 
+Env alternative: `IDENTYCLAW_API_ENDPOINTS=https://api-b.example.com`.
+
 Enroll first if needed: [`references/login-authentication.md`](references/login-authentication.md). Never paste keys into chat.
 
 ---
@@ -101,7 +120,8 @@ Enroll first if needed: [`references/login-authentication.md`](references/login-
 
 ```text
 Skill (workflows):     openclaw skills install clawhub:identyclaw
-Plugin (tools):        openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin
+Plugin (API + HOLA):   openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin
+Plugin (A2A P2P):      openclaw plugins install clawhub:@identyclaw/openclaw-a2a-plugin
 MCP (docs):            https://api.identyclaw.com/mcp
 Discovery index:       doc:discovery
 Cheat sheet:           doc:skills
@@ -113,17 +133,30 @@ Cheat sheet:           doc:skills
 
 | # | Goal | Method | Lane |
 |---|------|--------|------|
-| 1 | API session (JWT) | `GET /api/login/timestamp` → sign → `POST /api/login` | API login |
-| 2 | **Create outbound HOLA line** | `identyclaw_create_hola` or `@rodit/hola-client` | HOLA (+ API session) |
-| 3 | **Verify peer HOLA line** | `POST /api/identity/verify` or `identyclaw_verify_hola` | HOLA (+ API session) |
-| 4 | Resolve Passport → full DN | `GET /api/identity/token/{tokenId}/full` | API session |
-| 5 | List public agents | `GET /api/agents?limit=20` | Public |
-| 6 | Resolve DID | `GET /.well-known/did/resolve?did=did:rodit:{tokenId}` | API session |
+| 1 | API session (home or federated) | `identyclaw_ensure_session` ± `apiEndpoint` | API login |
+| 2 | List live sessions | `identyclaw_list_sessions` | API login |
+| 3 | **Create outbound HOLA line** | `identyclaw_create_hola` (± `apiEndpoint`) | HOLA (+ API session) |
+| 4 | **Verify peer HOLA line** | `identyclaw_verify_hola` (± `apiEndpoint`) | HOLA (+ API session) |
+| 5 | Resolve Passport → full DN | `identyclaw_get_agent_identity` | API session |
+| 6 | List public agents | `identyclaw_list_agents` | Public |
+| 7 | Resolve DID | `identyclaw_resolve_did` | API session |
+| 8 | Message another agent (A2A) | **`identyclaw-a2a` plugin** (not this skill’s HTTP tools) | A2A P2P |
 
-### 1. API login (get JWT)
+### 1. API session (plugin — preferred)
+
+```text
+identyclaw_ensure_session
+identyclaw_ensure_session  apiEndpoint=https://api-b.example.com
+identyclaw_get_my_identity apiEndpoint=https://api-b.example.com
+identyclaw_list_sessions
+```
+
+Sessions are **cached per URL**. You can be logged into home and federated APIs **at the same time**.
+
+### 1b. Manual API login (operators / non-plugin only)
 
 ```bash
-BASE=https://api.identyclaw.com
+BASE=https://api.identyclaw.com   # or federated peer URL
 
 TS_JSON=$(curl -sS "$BASE/api/login/timestamp")
 TIMESTAMP=$(echo "$TS_JSON" | jq -r '.timestamp')
@@ -141,7 +174,7 @@ Full steps: [`references/login-authentication.md`](references/login-authenticati
 
 ### 2. Create outbound HOLA line
 
-**Recommended:** `identyclaw_create_hola` (plugin **v1.4.0+**) or **`@rodit/hola-client`** — API session fetches nonce; **private key signs HOLA locally**.
+**Recommended:** `identyclaw_create_hola` (plugin **v1.4.0+**) — API session fetches nonce; **private key signs HOLA locally**.
 
 ```text
 HOLA/<recipient>/<tokenId>/<timestamp>/<noncetsHex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>
@@ -159,35 +192,25 @@ Walkthrough: [`references/hola-howto.md`](references/hola-howto.md). Self-test: 
 
 ### 3. Verify an incoming HOLA line
 
-The **payload** is the HOLA string; your **JWT** only authorizes the API call.
-
-```bash
-curl -sS -X POST https://api.identyclaw.com/api/identity/verify \
-  -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" \
-  -d '{"hola":"HOLA/MUNDO/<peerTokenId>/...","expectedRecipient":"MUNDO"}'
-```
+Use **`identyclaw_verify_hola`** with the exact HOLA string. The JWT only authorizes the API call.
 
 Trust only when `verified: true`. Diagnostics: [`references/hola-agent-authentication.md`](references/hola-agent-authentication.md#verification-result-diagnostics-apidentityverify).
 
-### 4–6. Identity, discovery, DID
+### 4–7. Identity, discovery, DID
 
-```bash
-curl -sS "$BASE/api/identity/token/<tokenId>/full" -H "Authorization: Bearer $JWT"
-curl -sS "$BASE/api/agents?limit=20"
-curl -sS "$BASE/.well-known/did/resolve?did=did:rodit:<tokenId>" -H "Authorization: Bearer $JWT"
-```
+Prefer plugin tools (`identyclaw_get_agent_identity`, `identyclaw_list_agents`, `identyclaw_resolve_did`) with optional `apiEndpoint`.
 
 ---
 
 ## First contact from an unknown agent
 
-1. **API login** — your JWT (cheat sheet §1).
-2. **Verify HOLA line** — `POST /api/identity/verify` with the exact string received (not a JWT).
+1. **API session** — `identyclaw_ensure_session` (do not curl login).
+2. **Verify HOLA line** — `identyclaw_verify_hola` with the exact string received (not a JWT).
 3. **If `verified: true`** — note `peerTokenId`.
-4. **Lookup** — `GET /api/identity/token/{peerTokenId}/full`.
+4. **Lookup** — `identyclaw_get_agent_identity`.
 5. **Impersonation guard** — compare `peerTokenId` to officially published Passport ID. [`references/finding-agents.md`](references/finding-agents.md#5-guard-against-impersonation).
-6. **Subagent** — `POST /api/isauthorizedsigner` when delegation fields present. [`references/hola-subagent-authentication.md`](references/hola-subagent-authentication.md).
+6. **Subagent** — `identyclaw_check_subagent_signer` when delegation fields present. [`references/hola-subagent-authentication.md`](references/hola-subagent-authentication.md).
+7. **Ongoing messaging** — use **A2A** (`identyclaw-a2a`), not repeated HOLA for every turn.
 
 ---
 
@@ -197,7 +220,14 @@ curl -sS "$BASE/.well-known/did/resolve?did=did:rodit:<tokenId>" -H "Authorizati
 openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin
 ```
 
-Plugin **v1.4.0+** · tool reference: [README.md](https://github.com/discernible-io/openclaw-identyclaw-plugin/blob/main/README.md)
+Plugin **v1.6.0+** · tool reference: [README.md](https://github.com/discernible-io/openclaw-identyclaw-plugin/blob/main/README.md)
+
+### Session tools
+
+| Tool | Role |
+| --- | --- |
+| `identyclaw_ensure_session` | Open/refresh session for home or `apiEndpoint` (no JWT returned) |
+| `identyclaw_list_sessions` | List cached multi-API sessions |
 
 ### Public (no API session)
 
@@ -224,7 +254,7 @@ Plugin **v1.4.0+** · tool reference: [README.md](https://github.com/discernible
 | `identyclaw_create_hola` | API session + local HOLA sign (`nearPrivateKey`); signer from `/api/me/identity`, optional `recipient` only |
 | `identyclaw_verify_hola` | API session + peer HOLA line → `POST /api/identity/verify` |
 
-Allowlist optional tools in `tools.allow` when credentials are configured.
+Most HTTP tools accept optional **`apiEndpoint`**. Allowlist optional tools in `tools.allow` when credentials are configured.
 
 **ClawHub skill (this bundle):** `openclaw skills install clawhub:identyclaw`
 
@@ -252,4 +282,4 @@ Allowlist optional tools in `tools.allow` when credentials are configured.
 
 **Terminology:** User-facing copy says **IdentyClaw Passport** (12-letter ID). **RODiT** is protocol technology only — do not say "RODiT Passport."
 
-**Skill vs plugin vs MCP:** This **skill** teaches workflows. The **plugin** runs API calls and local HOLA signing. **MCP** serves documentation only (`list_resources`, `get_resource`).
+**Skill vs plugin vs MCP vs A2A:** This **skill** teaches workflows. The **identyclaw-tools** plugin runs multi-API login, HOLA, and identity. **MCP** serves documentation. **identyclaw-a2a** owns agent-to-agent P2P JWTs.

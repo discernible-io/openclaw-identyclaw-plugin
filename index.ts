@@ -39,10 +39,15 @@ const { createHola, nearPrivateKeyToSigningSecretKey, writeNearCredentialsFile }
 type LoginCache = {
   token: string;
   expiresAtMs: number;
+  apiEndpoint: string;
+  federated: boolean;
 };
 
 type RuntimeConfig = {
+  /** Home / default API (Passport subject URL). */
   baseUrl: string;
+  /** Additional same-family APIs agents may session against concurrently. */
+  apiEndpoints: string[];
   accountid?: string;
   nearPrivateKey?: string;
   nearCredentialsOutputDirs?: string[];
@@ -53,7 +58,18 @@ type RuntimeConfig = {
 const configSchema = Type.Object(
   {
     baseUrl: Type.Optional(
-      Type.String({ description: "IdentyClaw API base URL (default https://api.identyclaw.com)" })
+      Type.String({
+        description:
+          "Home IdentyClaw API base URL (default https://api.identyclaw.com). Passport subject / default session target."
+      })
+    ),
+    apiEndpoints: Type.Optional(
+      Type.Array(
+        Type.String({
+          description:
+            "Additional federated API base URLs (same SR/CR family) for concurrent sessions — e.g. https://api-b.example.com"
+        })
+      )
     ),
     accountid: Type.Optional(
       Type.String({ description: "64-char hex NEAR implicit account id" })
@@ -88,42 +104,161 @@ const configSchema = Type.Object(
   { additionalProperties: false }
 );
 
+const apiEndpointParam = Type.Optional(
+  Type.String({
+    description:
+      "API base URL for this call (home or federated). Default: plugin baseUrl. Plugin auto-logins and caches a JWT per URL — do not hand-roll POST /api/login."
+  })
+);
+
 const ONE_MINUTE_MS = 60_000;
 const DEFAULT_JWT_TTL_SEC = 3600;
-let loginCache: LoginCache | null = null;
 
-function parseJwtExpiryMs(jwt: string): number | null {
+/** Per-API JWT sessions (key = normalizeApiUrl with port preserved). */
+const loginCacheByApi = new Map<string, LoginCache>();
+
+function stripTrailingSlashes(url: string): string {
+  return url.trim().replace(/\/+$/, "");
+}
+
+/** Cache / request URL key — keeps port (needed for :8443 peers). */
+function normalizeApiUrl(url: string): string {
+  const trimmed = stripTrailingSlashes(url);
+  try {
+    const parsed = new URL(trimmed);
+    parsed.hash = "";
+    parsed.search = "";
+    const pathname = parsed.pathname.replace(/\/+$/, "") || "";
+    return `${parsed.protocol}//${parsed.host}${pathname === "/" ? "" : pathname}`;
+  } catch {
+    return trimmed;
+  }
+}
+
+/** Match @rodit/rodit-auth-be federated URL compare (port stripped). */
+function normalizeUrlWithoutPort(url: string): string {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    parsed.port = "";
+    parsed.hash = "";
+    parsed.search = "";
+    return stripTrailingSlashes(parsed.toString());
+  } catch {
+    return stripTrailingSlashes(String(url));
+  }
+}
+
+function isNonEmptyUrlClaim(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+function parseJwtPayload(jwt: string): Record<string, unknown> | null {
   const parts = jwt.split(".");
   if (parts.length !== 3) {
     return null;
   }
   try {
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as {
-      exp?: unknown;
-      session_exp?: unknown;
-    };
-    if (typeof payload.exp === "number" && Number.isFinite(payload.exp)) {
-      return payload.exp * 1000;
-    }
+    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<
+      string,
+      unknown
+    >;
   } catch {
     return null;
+  }
+}
+
+function parseJwtExpiryMs(jwt: string): number | null {
+  const payload = parseJwtPayload(jwt);
+  if (!payload) {
+    return null;
+  }
+  if (typeof payload.exp === "number" && Number.isFinite(payload.exp)) {
+    return payload.exp * 1000;
   }
   return null;
 }
 
-function cacheJwt(jwt: string): void {
-  const expiresAtMs = parseJwtExpiryMs(jwt) ?? Date.now() + DEFAULT_JWT_TTL_SEC * 1000;
-  loginCache = {
-    token: jwt,
-    expiresAtMs
-  };
+/**
+ * Client-side federated MITM check (same contract as rodit-auth-be validateFederatedLoginTarget).
+ * Same-API: ok. Federated: claim must equal intended API; iss should equal home when present.
+ */
+function validateFederatedLoginTarget(
+  payload: Record<string, unknown> | null,
+  intendedApiEndpoint: string,
+  clientHomeUrl: string
+): { ok: boolean; federated: boolean; errorCode?: string; errorMessage?: string; warning?: string } {
+  const normalizedIntended = normalizeUrlWithoutPort(intendedApiEndpoint);
+  const normalizedHome = normalizeUrlWithoutPort(clientHomeUrl);
+  const federated = normalizedHome !== normalizedIntended;
+
+  if (!federated) {
+    return { ok: true, federated: false };
+  }
+
+  if (!payload) {
+    return {
+      ok: false,
+      federated: true,
+      errorCode: "FEDERATED_JWT_UNPARSEABLE",
+      errorMessage: "Federated login JWT payload could not be parsed"
+    };
+  }
+
+  const claim = payload.rodit_subjectuniqueidentifier_url;
+  if (!isNonEmptyUrlClaim(claim)) {
+    return {
+      ok: true,
+      federated: true,
+      warning:
+        "Federated JWT missing rodit_subjectuniqueidentifier_url (peer may be pre-9.13). Session cached; prefer peers on @rodit/rodit-auth-be >= 9.13."
+    };
+  }
+
+  if (normalizeUrlWithoutPort(claim) !== normalizedIntended) {
+    return {
+      ok: false,
+      federated: true,
+      errorCode: "FEDERATED_ISSUER_MISMATCH",
+      errorMessage: `Federated claim ${claim} does not match intended API ${intendedApiEndpoint}`
+    };
+  }
+
+  if (isNonEmptyUrlClaim(payload.iss) && normalizeUrlWithoutPort(payload.iss) !== normalizedHome) {
+    return {
+      ok: false,
+      federated: true,
+      errorCode: "FEDERATED_ISSUER_MISMATCH",
+      errorMessage: `Federated JWT iss ${payload.iss} does not match home API ${clientHomeUrl}`
+    };
+  }
+
+  return { ok: true, federated: true };
 }
 
-function applyNewTokenFromResponse(resp: Response): void {
+function cacheJwt(apiEndpoint: string, jwt: string, federated: boolean): LoginCache {
+  const expiresAtMs = parseJwtExpiryMs(jwt) ?? Date.now() + DEFAULT_JWT_TTL_SEC * 1000;
+  const entry: LoginCache = {
+    token: jwt,
+    expiresAtMs,
+    apiEndpoint: normalizeApiUrl(apiEndpoint),
+    federated
+  };
+  loginCacheByApi.set(entry.apiEndpoint, entry);
+  return entry;
+}
+
+function applyNewTokenFromResponse(resp: Response, apiEndpoint: string, homeUrl: string): void {
   const renewed = resp.headers.get("New-Token") || resp.headers.get("new-token");
-  if (renewed) {
-    cacheJwt(renewed);
+  if (!renewed) {
+    return;
   }
+  const payload = parseJwtPayload(renewed);
+  const check = validateFederatedLoginTarget(payload, apiEndpoint, homeUrl);
+  if (!check.ok) {
+    return;
+  }
+  cacheJwt(apiEndpoint, renewed, check.federated);
 }
 
 async function readErrorBody(resp: Response): Promise<string> {
@@ -139,11 +274,28 @@ function base64UrlEncode(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
+function parseApiEndpointsList(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => normalizeApiUrl(entry))
+      .filter(Boolean);
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    return raw
+      .split(",")
+      .map((entry) => normalizeApiUrl(entry))
+      .filter(Boolean);
+  }
+  return [];
+}
+
 function resolveConfig(pluginConfig: Record<string, unknown>): RuntimeConfig {
   const envBase = process.env.IDENTYCLAW_BASE_URL || "https://api.identyclaw.com";
   const envAccountId = process.env.IDENTYCLAW_ACCOUNT_ID;
   const envRodit = process.env.IDENTYCLAW_RODIT_ID;
   const envKey = process.env.IDENTYCLAW_NEAR_PRIVATE_KEY;
+  const envEndpoints = process.env.IDENTYCLAW_API_ENDPOINTS;
 
   const accountFromConfig =
     typeof pluginConfig.accountid === "string"
@@ -152,8 +304,16 @@ function resolveConfig(pluginConfig: Record<string, unknown>): RuntimeConfig {
         ? pluginConfig.roditid
         : undefined;
 
+  const baseUrl = normalizeApiUrl(String(pluginConfig.baseUrl || envBase));
+  const fromConfig = parseApiEndpointsList(pluginConfig.apiEndpoints);
+  const fromEnv = parseApiEndpointsList(envEndpoints);
+  const apiEndpoints = [...new Set([...fromConfig, ...fromEnv])].filter(
+    (url) => normalizeUrlWithoutPort(url) !== normalizeUrlWithoutPort(baseUrl)
+  );
+
   return {
-    baseUrl: String(pluginConfig.baseUrl || envBase),
+    baseUrl,
+    apiEndpoints,
     accountid: accountFromConfig || envAccountId || envRodit,
     nearPrivateKey:
       typeof pluginConfig.nearPrivateKey === "string"
@@ -173,6 +333,13 @@ function resolveConfig(pluginConfig: Record<string, unknown>): RuntimeConfig {
         ? pluginConfig.generateNearAccountOnInstall
         : true
   };
+}
+
+function resolveTargetApiUrl(cfg: RuntimeConfig, apiEndpoint?: string): string {
+  if (apiEndpoint?.trim()) {
+    return normalizeApiUrl(apiEndpoint);
+  }
+  return cfg.baseUrl;
 }
 
 function resolveBootstrapOutputDir(cfg: RuntimeConfig): string {
@@ -230,8 +397,10 @@ function getNearSigningSecretKey(nearPrivateKey: string): Uint8Array {
   return nearPrivateKeyToSigningSecretKey(nearPrivateKey);
 }
 
-async function getCallerTokenId(cfg: RuntimeConfig): Promise<string> {
-  const identity = (await apiGet("/api/me/identity", cfg, true)) as { tokenId?: string };
+async function getCallerTokenId(cfg: RuntimeConfig, apiEndpoint?: string): Promise<string> {
+  const identity = (await apiGet("/api/me/identity", cfg, true, apiEndpoint)) as {
+    tokenId?: string;
+  };
   const fromIdentity = identity?.tokenId?.trim().toLowerCase();
   if (fromIdentity && /^[a-z]{12}$/.test(fromIdentity)) {
     return fromIdentity;
@@ -242,22 +411,65 @@ async function getCallerTokenId(cfg: RuntimeConfig): Promise<string> {
   );
 }
 
-async function getJwt(cfg: RuntimeConfig): Promise<string> {
-  if (loginCache && loginCache.expiresAtMs - ONE_MINUTE_MS > Date.now()) {
-    return loginCache.token;
+type SessionInfo = {
+  apiEndpoint: string;
+  homeBaseUrl: string;
+  federated: boolean;
+  expiresAtIso: string;
+  expiresInSec: number;
+  warning?: string;
+};
+
+function toSessionInfo(entry: LoginCache, homeBaseUrl: string, warning?: string): SessionInfo {
+  const expiresInSec = Math.max(0, Math.floor((entry.expiresAtMs - Date.now()) / 1000));
+  return {
+    apiEndpoint: entry.apiEndpoint,
+    homeBaseUrl,
+    federated: entry.federated,
+    expiresAtIso: new Date(entry.expiresAtMs).toISOString(),
+    expiresInSec,
+    ...(warning ? { warning } : {})
+  };
+}
+
+/**
+ * Ensure a JWT session for home or a federated API. Caches per URL so agents can
+ * hold sessions to multiple APIs at once. Never returns the JWT to the model.
+ */
+async function ensureSession(
+  cfg: RuntimeConfig,
+  apiEndpoint?: string
+): Promise<SessionInfo & { ok: true }> {
+  const target = resolveTargetApiUrl(cfg, apiEndpoint);
+  const jwt = await getJwt(cfg, target);
+  const entry = loginCacheByApi.get(normalizeApiUrl(target));
+  if (!entry) {
+    throw new Error(`Session cache miss after login to ${target}`);
+  }
+  // Re-read warning from last validation by re-checking payload (cheap).
+  const check = validateFederatedLoginTarget(parseJwtPayload(jwt), target, cfg.baseUrl);
+  return { ok: true, ...toSessionInfo(entry, cfg.baseUrl, check.warning) };
+}
+
+async function getJwt(cfg: RuntimeConfig, apiEndpoint?: string): Promise<string> {
+  const target = resolveTargetApiUrl(cfg, apiEndpoint);
+  const cacheKey = normalizeApiUrl(target);
+  const cached = loginCacheByApi.get(cacheKey);
+  if (cached && cached.expiresAtMs - ONE_MINUTE_MS > Date.now()) {
+    return cached.token;
   }
 
   if (!cfg.accountid || !cfg.nearPrivateKey) {
     throw new Error("Missing config: protected tools require accountid and nearPrivateKey");
   }
 
-  const tsResp = await fetch(`${cfg.baseUrl}/api/login/timestamp`);
+  const tsResp = await fetch(`${target}/api/login/timestamp`);
   if (!tsResp.ok) {
-    throw new Error(`Failed to get login timestamp: HTTP ${tsResp.status}`);
+    throw new Error(`Failed to get login timestamp from ${target}: HTTP ${tsResp.status}`);
   }
   const tsData = (await tsResp.json()) as { timestamp: number; timestamp_iso: string };
   if (!Number.isFinite(tsData.timestamp) || !tsData.timestamp_iso) {
-    throw new Error("Timestamp endpoint returned invalid payload");
+    throw new Error(`Timestamp endpoint on ${target} returned invalid payload`);
   }
 
   const message = `${cfg.accountid}${tsData.timestamp_iso}`;
@@ -265,7 +477,7 @@ async function getJwt(cfg: RuntimeConfig): Promise<string> {
   const signature = nacl.sign.detached(new TextEncoder().encode(message), signingKey);
   const base64urlSignature = base64UrlEncode(signature);
 
-  const loginResp = await fetch(`${cfg.baseUrl}/api/login`, {
+  const loginResp = await fetch(`${target}/api/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -276,52 +488,70 @@ async function getJwt(cfg: RuntimeConfig): Promise<string> {
   });
   if (!loginResp.ok) {
     const body = await readErrorBody(loginResp);
-    throw new Error(`Login failed: HTTP ${loginResp.status} — ${body}`);
+    throw new Error(`Login failed against ${target}: HTTP ${loginResp.status} — ${body}`);
   }
   const loginData = (await loginResp.json()) as { jwt_token?: string; token?: string };
   const jwt = loginData.jwt_token || loginData.token;
   if (!jwt) {
-    throw new Error("Login response did not include jwt_token");
+    throw new Error(`Login response from ${target} did not include jwt_token`);
   }
 
-  const expiresAtMs = parseJwtExpiryMs(jwt) ?? Date.now() + DEFAULT_JWT_TTL_SEC * 1000;
-  cacheJwt(jwt);
+  const check = validateFederatedLoginTarget(parseJwtPayload(jwt), target, cfg.baseUrl);
+  if (!check.ok) {
+    throw new Error(
+      `${check.errorCode ?? "FEDERATED_LOGIN_REJECTED"}: ${check.errorMessage ?? "federated login rejected"}`
+    );
+  }
 
+  cacheJwt(target, jwt, check.federated);
   return jwt;
 }
 
-async function apiGet(path: string, cfg: RuntimeConfig, auth = false): Promise<unknown> {
+async function apiGet(
+  path: string,
+  cfg: RuntimeConfig,
+  auth = false,
+  apiEndpoint?: string
+): Promise<unknown> {
+  const target = resolveTargetApiUrl(cfg, apiEndpoint);
   const headers: Record<string, string> = {};
   if (auth) {
-    headers.authorization = `Bearer ${await getJwt(cfg)}`;
+    headers.authorization = `Bearer ${await getJwt(cfg, target)}`;
   }
-  const resp = await fetch(`${cfg.baseUrl}${path}`, { headers });
+  const resp = await fetch(`${target}${path}`, { headers });
   if (!resp.ok) {
     const body = await readErrorBody(resp);
-    throw new Error(`GET ${path} failed: HTTP ${resp.status} — ${body}`);
+    throw new Error(`GET ${path} on ${target} failed: HTTP ${resp.status} — ${body}`);
   }
   if (auth) {
-    applyNewTokenFromResponse(resp);
+    applyNewTokenFromResponse(resp, target, cfg.baseUrl);
   }
   return resp.json();
 }
 
-async function apiPost(path: string, body: unknown, cfg: RuntimeConfig, auth = false): Promise<unknown> {
+async function apiPost(
+  path: string,
+  body: unknown,
+  cfg: RuntimeConfig,
+  auth = false,
+  apiEndpoint?: string
+): Promise<unknown> {
+  const target = resolveTargetApiUrl(cfg, apiEndpoint);
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (auth) {
-    headers.authorization = `Bearer ${await getJwt(cfg)}`;
+    headers.authorization = `Bearer ${await getJwt(cfg, target)}`;
   }
-  const resp = await fetch(`${cfg.baseUrl}${path}`, {
+  const resp = await fetch(`${target}${path}`, {
     method: "POST",
     headers,
     body: JSON.stringify(body)
   });
   if (!resp.ok) {
     const errorBody = await readErrorBody(resp);
-    throw new Error(`POST ${path} failed: HTTP ${resp.status} — ${errorBody}`);
+    throw new Error(`POST ${path} on ${target} failed: HTTP ${resp.status} — ${errorBody}`);
   }
   if (auth) {
-    applyNewTokenFromResponse(resp);
+    applyNewTokenFromResponse(resp, target, cfg.baseUrl);
   }
   return resp.json();
 }
@@ -330,16 +560,53 @@ export default (() => {
   const plugin = defineToolPlugin({
   id: "identyclaw-tools",
   name: "IdentyClaw Tools",
-  description: "OpenClaw agent tools for the IdentyClaw HTTP API",
+  description:
+    "OpenClaw agent tools for the IdentyClaw HTTP API (multi-API sessions + HOLA). For A2A P2P messaging use the separate identyclaw-a2a plugin.",
   configSchema,
   tools: (tool) => [
+    tool({
+      name: "identyclaw_ensure_session",
+      label: "Ensure API Session",
+      description:
+        "Ensure an API JWT session for the home baseUrl or a federated apiEndpoint. Prefer this over hand-rolling POST /api/login. Returns session metadata only (never the JWT). Concurrent sessions are cached per API URL. For agent-to-agent P2P messaging use the identyclaw-a2a plugin, not this tool.",
+      parameters: Type.Object({
+        apiEndpoint: apiEndpointParam
+      }),
+      optional: true,
+      async execute(params, config) {
+        const cfg = resolveConfig(config);
+        return ensureSession(cfg, params.apiEndpoint);
+      }
+    }),
+    tool({
+      name: "identyclaw_list_sessions",
+      label: "List API Sessions",
+      description:
+        "List cached API JWT sessions (home + federated). Does not return JWTs. Use identyclaw_ensure_session to open a missing session. A2A P2P peer JWTs are owned by the identyclaw-a2a plugin.",
+      parameters: Type.Object({}),
+      optional: true,
+      async execute(_params, config) {
+        const cfg = resolveConfig(config);
+        const now = Date.now();
+        const sessions = [...loginCacheByApi.values()]
+          .filter((entry) => entry.expiresAtMs > now)
+          .map((entry) => toSessionInfo(entry, cfg.baseUrl));
+        return {
+          homeBaseUrl: cfg.baseUrl,
+          configuredApiEndpoints: cfg.apiEndpoints,
+          sessions,
+          note: "Do not hand-roll login. Pass apiEndpoint on identyclaw_* tools or call identyclaw_ensure_session. A2A P2P uses openclaw-a2a-idc-plugin."
+        };
+      }
+    }),
     tool({
       name: "identyclaw_list_agents",
       label: "List Agents",
       description: "List public identyclaw agents",
       parameters: Type.Object({
         limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
-        cursor: Type.Optional(Type.String())
+        cursor: Type.Optional(Type.String()),
+        apiEndpoint: apiEndpointParam
       }),
       async execute(params, config) {
         const cfg = resolveConfig(config);
@@ -347,45 +614,50 @@ export default (() => {
         if (params.limit !== undefined) query.set("limit", String(params.limit));
         if (params.cursor) query.set("cursor", params.cursor);
         const suffix = query.size > 0 ? `?${query.toString()}` : "";
-        return apiGet(`/api/agents${suffix}`, cfg, false);
+        return apiGet(`/api/agents${suffix}`, cfg, false, params.apiEndpoint);
       }
     }),
     tool({
       name: "identyclaw_get_my_identity",
       label: "My Identity",
       description:
-        "GET /api/me/identity — caller Passport (requires API session JWT from auto-login; not a HOLA line)",
-      parameters: Type.Object({}),
+        "GET /api/me/identity — caller Passport (auto-login JWT; not a HOLA line). Optional apiEndpoint for federated APIs.",
+      parameters: Type.Object({
+        apiEndpoint: apiEndpointParam
+      }),
       optional: true,
-      async execute(_params, config) {
+      async execute(params, config) {
         const cfg = resolveConfig(config);
-        return apiGet("/api/me/identity", cfg, true);
+        return apiGet("/api/me/identity", cfg, true, params.apiEndpoint);
       }
     }),
     tool({
       name: "identyclaw_get_nonce",
       label: "HOLA Nonce",
       description:
-        "HOLA lane: GET /api/holanonce16ts (requires API session JWT). Returns noncetsHex + timestamp for HOLA line construction — not login timestamp_iso from GET /api/login/timestamp.",
-      parameters: Type.Object({}),
+        "HOLA lane: GET /api/holanonce16ts (auto-login JWT). Returns noncetsHex + timestamp for HOLA — not login timestamp_iso.",
+      parameters: Type.Object({
+        apiEndpoint: apiEndpointParam
+      }),
       optional: true,
-      async execute(_params, config) {
+      async execute(params, config) {
         const cfg = resolveConfig(config);
-        return apiGet("/api/holanonce16ts", cfg, true);
+        return apiGet("/api/holanonce16ts", cfg, true, params.apiEndpoint);
       }
     }),
     tool({
       name: "identyclaw_create_hola",
       label: "Create HOLA",
       description:
-        "HOLA lane: fetch nonce (API session JWT) then sign outbound HOLA line locally with nearPrivateKey (base32 line signature — separate from API login base64url signature). Signer/origin is always this agent's Passport ID from GET /api/me/identity — only recipient may be supplied. Returns hola wire string for peers.",
+        "HOLA lane: fetch nonce (auto-login) then sign outbound HOLA locally with nearPrivateKey. Signer from GET /api/me/identity; only recipient may be supplied. Optional apiEndpoint selects which API issues the nonce/session.",
       parameters: Type.Object({
         recipient: Type.Optional(
           Type.String({
             description:
               "HOLA recipient Passport ID (default MUNDO for broadcast intros); the only user-supplied field"
           })
-        )
+        ),
+        apiEndpoint: apiEndpointParam
       }),
       optional: true,
       async execute(params, config) {
@@ -395,10 +667,11 @@ export default (() => {
             "identyclaw_create_hola requires nearPrivateKey in plugin config or IDENTYCLAW_NEAR_PRIVATE_KEY"
           );
         }
-        const jwt = await getJwt(cfg);
-        const tokenId = await getCallerTokenId(cfg);
+        const target = resolveTargetApiUrl(cfg, params.apiEndpoint);
+        const jwt = await getJwt(cfg, target);
+        const tokenId = await getCallerTokenId(cfg, target);
         return createHola({
-          baseUrl: cfg.baseUrl,
+          baseUrl: target,
           jwt,
           nearPrivateKey: cfg.nearPrivateKey,
           tokenId,
@@ -410,7 +683,7 @@ export default (() => {
       name: "identyclaw_verify_hola",
       label: "Verify HOLA",
       description:
-        "HOLA lane: POST /api/identity/verify with peer HOLA line (API session JWT authorizes the call; payload is the HOLA string, not a JWT)",
+        "HOLA lane: POST /api/identity/verify with peer HOLA line (auto-login authorizes the call; payload is the HOLA string, not a JWT)",
       parameters: Type.Object({
         hola: Type.String({ description: "Full HOLA handshake line from another agent" }),
         maxAgeMs: Type.Optional(Type.Number({ minimum: 1 })),
@@ -419,7 +692,8 @@ export default (() => {
             description:
               "HOLA recipient token ID; suppresses RECIPIENT_MISMATCH when verifying a peer HOLA intentionally"
           })
-        )
+        ),
+        apiEndpoint: apiEndpointParam
       }),
       optional: true,
       async execute(params, config) {
@@ -433,7 +707,7 @@ export default (() => {
         if (params.expectedRecipient) {
           body.expectedRecipient = params.expectedRecipient;
         }
-        return apiPost("/api/identity/verify", body, cfg, true);
+        return apiPost("/api/identity/verify", body, cfg, true, params.apiEndpoint);
       }
     }),
     tool({
@@ -478,7 +752,8 @@ export default (() => {
       description: "List identyclaw MCP-style resources",
       parameters: Type.Object({
         limit: Type.Optional(Type.Number({ minimum: 1 })),
-        cursor: Type.Optional(Type.String())
+        cursor: Type.Optional(Type.String()),
+        apiEndpoint: apiEndpointParam
       }),
       async execute(params, config) {
         const cfg = resolveConfig(config);
@@ -486,7 +761,7 @@ export default (() => {
         if (params.limit !== undefined) query.set("limit", String(params.limit));
         if (params.cursor) query.set("cursor", params.cursor);
         const suffix = query.size > 0 ? `?${query.toString()}` : "";
-        return apiGet(`/api/mcp/resources${suffix}`, cfg, false);
+        return apiGet(`/api/mcp/resources${suffix}`, cfg, false, params.apiEndpoint);
       }
     }),
     tool({
@@ -494,7 +769,8 @@ export default (() => {
       label: "Get Resource",
       description: "Fetch one identyclaw MCP-style resource by URI",
       parameters: Type.Object({
-        uri: Type.String()
+        uri: Type.String(),
+        apiEndpoint: apiEndpointParam
       }),
       async execute(params, config) {
         const cfg = resolveConfig(config);
@@ -502,7 +778,7 @@ export default (() => {
           .split("/")
           .map((part: string) => encodeURIComponent(part))
           .join("/");
-        return apiGet(`/api/mcp/resource/${encodedUri}`, cfg, false);
+        return apiGet(`/api/mcp/resource/${encodedUri}`, cfg, false, params.apiEndpoint);
       }
     }),
     tool({
@@ -511,13 +787,14 @@ export default (() => {
       description:
         "GET /api/identity/token/{tokenId}/full — resolve Passport to DN, contactUri, and traits",
       parameters: Type.Object({
-        tokenId: Type.String({ description: "12-letter lowercase Passport ID" })
+        tokenId: Type.String({ description: "12-letter lowercase Passport ID" }),
+        apiEndpoint: apiEndpointParam
       }),
       optional: true,
       async execute(params, config) {
         const cfg = resolveConfig(config);
         const tokenId = encodeURIComponent(params.tokenId);
-        return apiGet(`/api/identity/token/${tokenId}/full`, cfg, true);
+        return apiGet(`/api/identity/token/${tokenId}/full`, cfg, true, params.apiEndpoint);
       }
     }),
     tool({
@@ -534,12 +811,14 @@ export default (() => {
         publicKey: Type.String({ description: "Base64url Ed25519 public key of delegated signer" }),
         signature: Type.String({
           description: "Base64url Ed25519 signature over tokenId:base64HashOrDelegateSignerId:unixTimestamp:publicKey"
-        })
+        }),
+        apiEndpoint: apiEndpointParam
       }),
       optional: true,
       async execute(params, config) {
         const cfg = resolveConfig(config);
-        return apiPost("/api/isauthorizedsigner", params, cfg, true);
+        const { apiEndpoint, ...body } = params;
+        return apiPost("/api/isauthorizedsigner", body, cfg, true, apiEndpoint);
       }
     }),
     tool({
@@ -547,13 +826,14 @@ export default (() => {
       label: "Resolve DID",
       description: "GET /.well-known/did/resolve?did=did:rodit:{tokenId} — DID document for peer",
       parameters: Type.Object({
-        tokenId: Type.String({ description: "12-letter lowercase Passport ID" })
+        tokenId: Type.String({ description: "12-letter lowercase Passport ID" }),
+        apiEndpoint: apiEndpointParam
       }),
       optional: true,
       async execute(params, config) {
         const cfg = resolveConfig(config);
         const did = encodeURIComponent(`did:rodit:${params.tokenId}`);
-        return apiGet(`/.well-known/did/resolve?did=${did}`, cfg, true);
+        return apiGet(`/.well-known/did/resolve?did=${did}`, cfg, true, params.apiEndpoint);
       }
     })
   ]

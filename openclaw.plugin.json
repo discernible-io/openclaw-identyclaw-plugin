@@ -1,7 +1,7 @@
 {
   "id": "identyclaw-tools",
   "name": "IdentyClaw Tools",
-  "description": "OpenClaw agent tools for the IdentyClaw HTTP API",
+  "description": "OpenClaw agent tools for the IdentyClaw HTTP API (multi-API sessions + HOLA). For A2A P2P messaging use the separate identyclaw-a2a plugin.",
   "activation": {
     "onStartup": true
   },
@@ -10,8 +10,15 @@
     "type": "object",
     "properties": {
       "baseUrl": {
-        "description": "IdentyClaw API base URL (default https://api.identyclaw.com)",
+        "description": "Home IdentyClaw API base URL (default https://api.identyclaw.com). Passport subject / default session target.",
         "type": "string"
+      },
+      "apiEndpoints": {
+        "type": "array",
+        "items": {
+          "description": "Additional federated API base URLs (same SR/CR family) for concurrent sessions — e.g. https://api-b.example.com",
+          "type": "string"
+        }
       },
       "accountid": {
         "description": "64-char hex NEAR implicit account id",
@@ -42,9 +49,11 @@
       }
     }
   },
-  "version": "1.5.3",
+  "version": "1.6.0",
   "contracts": {
     "tools": [
+      "identyclaw_ensure_session",
+      "identyclaw_list_sessions",
       "identyclaw_list_agents",
       "identyclaw_get_my_identity",
       "identyclaw_get_nonce",
@@ -59,6 +68,12 @@
     ]
   },
   "toolMetadata": {
+    "identyclaw_ensure_session": {
+      "optional": true
+    },
+    "identyclaw_list_sessions": {
+      "optional": true
+    },
     "identyclaw_get_my_identity": {
       "optional": true
     },

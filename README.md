@@ -42,13 +42,16 @@ Install this plugin when Passport-authenticated agents need **IdentyClaw API log
 
 Your agent gets `identyclaw_*` tools for IdentyClaw HTTP without hand-rolling login signatures or HOLA lines:
 
+- `identyclaw_ensure_session` / `identyclaw_list_sessions` for multi-API JWT sessions (home + federated)
 - `identyclaw_list_agents` / `identyclaw_list_resources` / `identyclaw_get_resource` for public discovery and MCP docs
 - `identyclaw_get_my_identity` / `identyclaw_get_agent_identity` / `identyclaw_resolve_did` for Passport identity
 - `identyclaw_get_nonce` / `identyclaw_create_hola` / `identyclaw_verify_hola` for HOLA peer authentication
 - `identyclaw_check_subagent_signer` for delegation authorization checks
 - `identyclaw_generate_near_account` (optional) for operator NEAR account creation on the gateway host
 
-The plugin **auto-logins** when protected tools run: `GET /api/login/timestamp` → sign login payload → `POST /api/login` → cache `jwt_token` until near expiry; applies `New-Token` response headers when present.
+The plugin **auto-logins** when protected tools run: `GET /api/login/timestamp` → sign login payload → `POST /api/login` → **cache `jwt_token` per API URL** until near expiry; applies `New-Token` response headers when present. Pass optional `apiEndpoint` to target a federated peer (e.g. `https://api-b.example.com`) while keeping the home session. Agents should call tools — not invent curl login.
+
+**A2A P2P** (send/receive with other agents) is a separate plugin: [`openclaw-a2a-idc-plugin`](https://github.com/discernible-io/openclaw-a2a-idc-plugin) (`identyclaw-a2a`). That component owns per-peer JWTs; this plugin owns IdentyClaw HTTP API + HOLA.
 
 ## 📦 Installation
 
@@ -86,6 +89,7 @@ Enable optional tools in OpenClaw config (see [Configuration](#-configuration) a
         enabled: true,
         config: {
           baseUrl: "https://api.identyclaw.com",
+          apiEndpoints: ["https://api-b.example.com"],
           accountid: "<64-char-hex-near-implicit-account>",
           nearPrivateKey: "ed25519:..."
         }
@@ -94,6 +98,8 @@ Enable optional tools in OpenClaw config (see [Configuration](#-configuration) a
   },
   tools: {
     allow: [
+      "identyclaw_ensure_session",
+      "identyclaw_list_sessions",
       "identyclaw_get_my_identity",
       "identyclaw_get_nonce",
       "identyclaw_create_hola",
@@ -117,7 +123,7 @@ Enable optional tools in OpenClaw config (see [Configuration](#-configuration) a
 | Skill (workflows) | `openclaw skills install clawhub:identyclaw` | Operator playbooks — [`skill/SKILL.md`](./skill/SKILL.md) in this repo |
 | MCP (canonical docs) | `https://api.identyclaw.com/mcp` | Live IdentyClaw API documentation |
 
-`identyclaw-tools` and `identyclaw-a2a` can share `IDENTYCLAW_ACCOUNT_ID`, `IDENTYCLAW_NEAR_PRIVATE_KEY`, and `IDENTYCLAW_BASE_URL`. HOLA stays application-layer via `identyclaw_*` tools; A2A peer calls use Passport JWTs through the A2A component.
+`identyclaw-tools` and `identyclaw-a2a` can share `IDENTYCLAW_ACCOUNT_ID`, `IDENTYCLAW_NEAR_PRIVATE_KEY`, and `IDENTYCLAW_BASE_URL`. Optional `IDENTYCLAW_API_ENDPOINTS` (comma-separated) lists federated HTTP APIs for this plugin. HOLA stays application-layer via `identyclaw_*` tools; A2A peer calls use separate per-peer Passport JWTs through the A2A component (`login_server` / P2P — not the central API session cache here).
 
 ## 🔐 Two lanes — do not mix them
 
@@ -220,7 +226,9 @@ Returns: `implicit_account_id`, `public_key`, `filePath` — not `private_key`.
 ## ✨ Features
 
 - **Public discovery tools** — list agents and MCP resources without an API session
-- **Auto-login** — protected tools trigger `POST /api/login` with Ed25519 signing; JWT cache with `New-Token` refresh
+- **Multi-API auto-login** — protected tools trigger `POST /api/login` with Ed25519 signing; **JWT cache per API URL** (home + federated) with `New-Token` refresh
+- **Session tools** — `identyclaw_ensure_session` / `identyclaw_list_sessions` so agents never hand-roll login
+- **Federated claim check** — validates `rodit_subjectuniqueidentifier_url` / `iss` when logging into a non-home API (aligned with `@rodit/rodit-auth-be` ≥9.13)
 - **HOLA create and verify** — nonce fetch, local base32 signing (`identyclaw_create_hola`), server-side peer verification (`identyclaw_verify_hola`)
 - **Identity and DID** — `identyclaw_get_my_identity`, per-token lookup, `did:rodit` resolution
 - **Subagent delegation** — `identyclaw_check_subagent_signer` against `POST /api/isauthorizedsigner`
@@ -232,7 +240,8 @@ Returns: `implicit_account_id`, `public_key`, `filePath` — not `private_key`.
 
 | Field | Env fallback | Used for |
 | --- | --- | --- |
-| `baseUrl` | `IDENTYCLAW_BASE_URL` | API host (default `https://api.identyclaw.com`) |
+| `baseUrl` | `IDENTYCLAW_BASE_URL` | Home API host (default `https://api.identyclaw.com`) — default session target |
+| `apiEndpoints` | `IDENTYCLAW_API_ENDPOINTS` | Extra federated API URLs (array / comma-separated) for concurrent sessions |
 | `accountid` | `IDENTYCLAW_ACCOUNT_ID` | API login identifier (64-char hex NEAR implicit account) |
 | `nearPrivateKey` | `IDENTYCLAW_NEAR_PRIVATE_KEY` | API login signature + `identyclaw_create_hola` local signing |
 | `generateNearAccountDefaultDir` | `IDENTYCLAW_NEAR_CREDENTIALS_DIR` | Default directory for `identyclaw_generate_near_account` |
@@ -241,11 +250,20 @@ Returns: `implicit_account_id`, `public_key`, `filePath` — not `private_key`.
 
 Deprecated config alias: `roditid` → use `accountid`.
 
+Most HTTP tools accept optional **`apiEndpoint`** to select home or a federated host for that call.
+
 For smoke tests you may pass a pre-obtained API bearer token instead of login bootstrap:
 
-- `IDENTYCLAW_JWT` — full `jwt_token` from `POST /api/login` (not a HOLA line).
+- `IDENTYCLAW_JWT` — full `jwt_token` from `POST /api/login` (not a HOLA line). Runtime plugin tools do **not** read this env; they always auto-login from Passport credentials.
 
 ## 🧰 Tools
+
+### Sessions (multi-API)
+
+| Tool | Role |
+| --- | --- |
+| `identyclaw_ensure_session` | Ensure JWT session for home or `apiEndpoint` (metadata only — JWT never returned to the model) |
+| `identyclaw_list_sessions` | List cached sessions + configured `apiEndpoints` |
 
 ### Public (no API session)
 
@@ -257,7 +275,7 @@ For smoke tests you may pass a pre-obtained API bearer token instead of login bo
 
 ### API session only
 
-Requires auto-login or `IDENTYCLAW_JWT`. No HOLA line involved.
+Requires auto-login (Passport credentials). No HOLA line involved. Optional `apiEndpoint` per call.
 
 | Tool | Endpoint |
 | --- | --- |
@@ -291,9 +309,11 @@ Optional tools are off by default in the manifest; allowlist them in OpenClaw co
 ### 1. API login only (identity / discovery)
 
 ```
-accountid + nearPrivateKey  →  POST /api/login  →  jwt_token
-jwt_token  →  GET /api/me/identity, GET /api/agents, …
+accountid + nearPrivateKey  →  auto POST /api/login (per apiEndpoint)  →  cached jwt_token
+identyclaw_ensure_session / identyclaw_get_my_identity (± apiEndpoint)
 ```
+
+Federated example: keep home session on `baseUrl` and call tools with `apiEndpoint: "https://api-b.example.com"`.
 
 ### 2. Outbound HOLA (intro to a peer)
 

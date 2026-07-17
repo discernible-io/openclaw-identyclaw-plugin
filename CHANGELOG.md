@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0 — 2026-07-17
+
+- **Multi-API sessions:** JWT cache is keyed per API URL so agents can stay logged into home + federated peers (e.g. `https://api-b.example.com`) at the same time.
+- **Config:** `apiEndpoints` / `IDENTYCLAW_API_ENDPOINTS` lists known federated hosts; optional `apiEndpoint` on HTTP tools selects the target.
+- **Tools:** `identyclaw_ensure_session` and `identyclaw_list_sessions` — open/list sessions without exposing JWTs or hand-rolling `POST /api/login`.
+- **Federated claim check:** soft MITM validation of `rodit_subjectuniqueidentifier_url` / `iss` aligned with `@rodit/rodit-auth-be` ≥9.13.
+- **Skill / docs:** agents must use plugin tools (not curl login); A2A P2P remains the separate `identyclaw-a2a` plugin.
+
 ## 1.5.3 — 2026-07-10
 
 - **`identyclaw_create_hola`:** drop `tokenId` from the agent-facing tool schema; signer is always resolved from `GET /api/me/identity`.
