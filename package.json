@@ -1,6 +1,6 @@
 {
   "name": "@identyclaw/openclaw-identyclaw-plugin",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "license": "MIT-0",
   "type": "module",
   "description": "OpenClaw plugin exposing IdentyClaw API agent tools",

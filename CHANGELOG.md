@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.2 — 2026-07-17
+
+- ClawHub republish of multi-API session support (1.6.0/1.6.1 were reserved but not promoted on the registry).
+
 ## 1.6.1 — 2026-07-17
 
 - ClawHub republish of the 1.6.0 multi-API session work (registry did not promote 1.6.0 to `latest`).
