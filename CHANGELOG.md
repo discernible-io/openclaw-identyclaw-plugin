@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1 — 2026-07-17
+
+- ClawHub republish of the 1.6.0 multi-API session work (registry did not promote 1.6.0 to `latest`).
+
 ## 1.6.0 — 2026-07-17
 
 - **Multi-API sessions:** JWT cache is keyed per API URL so agents can stay logged into home + federated peers (e.g. `https://api-b.example.com`) at the same time.
