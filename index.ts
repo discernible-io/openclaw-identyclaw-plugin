@@ -556,6 +556,119 @@ async function apiPost(
   return resp.json();
 }
 
+async function apiGetText(
+  path: string,
+  cfg: RuntimeConfig,
+  auth = false,
+  apiEndpoint?: string
+): Promise<string> {
+  const target = resolveTargetApiUrl(cfg, apiEndpoint);
+  const headers: Record<string, string> = {};
+  if (auth) {
+    headers.authorization = `Bearer ${await getJwt(cfg, target)}`;
+  }
+  const resp = await fetch(`${target}${path}`, { headers });
+  if (!resp.ok) {
+    const body = await readErrorBody(resp);
+    throw new Error(`GET ${path} on ${target} failed: HTTP ${resp.status} — ${body}`);
+  }
+  if (auth) {
+    applyNewTokenFromResponse(resp, target, cfg.baseUrl);
+  }
+  return resp.text();
+}
+
+type GameTask = {
+  gameId: string;
+  taskType: string;
+  required?: boolean;
+  action?: string;
+  description?: string;
+};
+
+async function gameTick(
+  cfg: RuntimeConfig,
+  apiEndpoint: string | undefined,
+  opts: {
+    sent?: number;
+    received?: number;
+    actionType?: string;
+    displayName?: string;
+  } = {}
+): Promise<unknown> {
+  const inbox = (await apiGet("/api/game/tasks", cfg, true, apiEndpoint)) as {
+    tasks?: GameTask[];
+    waitingOn?: unknown[];
+    requestId?: string;
+  };
+  const tasks = inbox.tasks ?? [];
+  const required = tasks.find((t) => t.required) ?? tasks[0];
+  if (!required) {
+    return {
+      submitted: false,
+      reason: "no_pending_task",
+      tasks,
+      waitingOn: inbox.waitingOn ?? [],
+      requestId: inbox.requestId,
+      note: "Empty tasks does not mean the table is unblocked — check waitingOn for peer names."
+    };
+  }
+
+  if (required.taskType === "submit_message_report") {
+    const sent = opts.sent ?? 0;
+    const received = opts.received ?? 0;
+    const result = await apiPost(
+      `/api/game/games/${encodeURIComponent(required.gameId)}/message-report`,
+      { sent, received },
+      cfg,
+      true,
+      apiEndpoint
+    );
+    const after = (await apiGet("/api/game/tasks", cfg, true, apiEndpoint)) as {
+      waitingOn?: unknown[];
+    };
+    return {
+      submitted: true,
+      taskType: required.taskType,
+      gameId: required.gameId,
+      payload: { sent, received },
+      result,
+      waitingOn: after.waitingOn ?? []
+    };
+  }
+
+  if (required.taskType === "submit_execution_action") {
+    const type = opts.actionType ?? "none";
+    const body = { type, action: type };
+    const result = await apiPost(
+      `/api/game/games/${encodeURIComponent(required.gameId)}/action`,
+      body,
+      cfg,
+      true,
+      apiEndpoint
+    );
+    const after = (await apiGet("/api/game/tasks", cfg, true, apiEndpoint)) as {
+      waitingOn?: unknown[];
+    };
+    return {
+      submitted: true,
+      taskType: required.taskType,
+      gameId: required.gameId,
+      payload: body,
+      result,
+      waitingOn: after.waitingOn ?? []
+    };
+  }
+
+  return {
+    submitted: false,
+    reason: "unsupported_task",
+    task: required,
+    waitingOn: inbox.waitingOn ?? [],
+    note: "Use negotiation message or join tools for this taskType; tick only auto-submits message-report and execution."
+  };
+}
+
 export default (() => {
   const plugin = defineToolPlugin({
   id: "identyclaw-tools",
@@ -834,6 +947,147 @@ export default (() => {
         const cfg = resolveConfig(config);
         const did = encodeURIComponent(`did:rodit:${params.tokenId}`);
         return apiGet(`/.well-known/did/resolve?did=${did}`, cfg, true, params.apiEndpoint);
+      }
+    }),
+    tool({
+      name: "identyclaw_game_tasks",
+      label: "SLC Game Tasks",
+      description:
+        "GET /api/game/tasks on a federated SLC apiEndpoint — returns tasks plus waitingOn peer names. Empty tasks ≠ unblocked. Prefer apiEndpoint https://slc.discernible.io:8443.",
+      parameters: Type.Object({
+        includeFinished: Type.Optional(Type.Boolean()),
+        apiEndpoint: apiEndpointParam
+      }),
+      optional: true,
+      async execute(params, config) {
+        const cfg = resolveConfig(config);
+        const q = params.includeFinished ? "?includeFinished=true" : "";
+        return apiGet(`/api/game/tasks${q}`, cfg, true, params.apiEndpoint);
+      }
+    }),
+    tool({
+      name: "identyclaw_game_state",
+      label: "SLC Game State",
+      description:
+        "GET /api/game/games/{gameId}/state — phase, pending messageReport/execution seats, inventories.",
+      parameters: Type.Object({
+        gameId: Type.String({ description: "Game ULID" }),
+        apiEndpoint: apiEndpointParam
+      }),
+      optional: true,
+      async execute(params, config) {
+        const cfg = resolveConfig(config);
+        return apiGet(
+          `/api/game/games/${encodeURIComponent(params.gameId)}/state`,
+          cfg,
+          true,
+          params.apiEndpoint
+        );
+      }
+    }),
+    tool({
+      name: "identyclaw_game_join",
+      label: "SLC Join Game",
+      description: "POST /api/game/games/{gameId}/join with optional displayName.",
+      parameters: Type.Object({
+        gameId: Type.String({ description: "Game ULID" }),
+        displayName: Type.Optional(Type.String()),
+        apiEndpoint: apiEndpointParam
+      }),
+      optional: true,
+      async execute(params, config) {
+        const cfg = resolveConfig(config);
+        const body: Record<string, string> = {};
+        if (params.displayName) body.displayName = params.displayName;
+        return apiPost(
+          `/api/game/games/${encodeURIComponent(params.gameId)}/join`,
+          body,
+          cfg,
+          true,
+          params.apiEndpoint
+        );
+      }
+    }),
+    tool({
+      name: "identyclaw_game_message_report",
+      label: "SLC Message Report",
+      description: "POST /api/game/games/{gameId}/message-report with sent/received counts.",
+      parameters: Type.Object({
+        gameId: Type.String({ description: "Game ULID" }),
+        sent: Type.Number({ description: "Messages sent this negotiation" }),
+        received: Type.Number({ description: "Messages received this negotiation" }),
+        apiEndpoint: apiEndpointParam
+      }),
+      optional: true,
+      async execute(params, config) {
+        const cfg = resolveConfig(config);
+        return apiPost(
+          `/api/game/games/${encodeURIComponent(params.gameId)}/message-report`,
+          { sent: params.sent, received: params.received },
+          cfg,
+          true,
+          params.apiEndpoint
+        );
+      }
+    }),
+    tool({
+      name: "identyclaw_game_action",
+      label: "SLC Execution Action",
+      description:
+        "POST /api/game/games/{gameId}/action — type none|transfer|invest (and optional transfer/invest fields per OpenAPI).",
+      parameters: Type.Object({
+        gameId: Type.String({ description: "Game ULID" }),
+        type: Type.String({ description: "none | transfer | invest" }),
+        payload: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+        apiEndpoint: apiEndpointParam
+      }),
+      optional: true,
+      async execute(params, config) {
+        const cfg = resolveConfig(config);
+        const body = { type: params.type, action: params.type, ...(params.payload ?? {}) };
+        return apiPost(
+          `/api/game/games/${encodeURIComponent(params.gameId)}/action`,
+          body,
+          cfg,
+          true,
+          params.apiEndpoint
+        );
+      }
+    }),
+    tool({
+      name: "identyclaw_game_tick",
+      label: "SLC Game Tick",
+      description:
+        "One heartbeat step on SLC: read tasks; if submit_message_report or submit_execution_action is required, submit once (defaults sent/received 0 and action none); return waitingOn. Call after identyclaw_ensure_session({ apiEndpoint }).",
+      parameters: Type.Object({
+        sent: Type.Optional(Type.Number()),
+        received: Type.Optional(Type.Number()),
+        actionType: Type.Optional(Type.String({ description: "Default none" })),
+        apiEndpoint: apiEndpointParam
+      }),
+      optional: true,
+      async execute(params, config) {
+        const cfg = resolveConfig(config);
+        return gameTick(cfg, params.apiEndpoint, {
+          sent: params.sent,
+          received: params.received,
+          actionType: params.actionType
+        });
+      }
+    }),
+    tool({
+      name: "identyclaw_game_skill",
+      label: "SLC Game Skill",
+      description:
+        "GET /api/game/skill.md — live playbook. Require version >= 1.4.0 and api_base with :8443.",
+      parameters: Type.Object({
+        apiEndpoint: apiEndpointParam
+      }),
+      optional: true,
+      async execute(params, config) {
+        const cfg = resolveConfig(config);
+        const markdown = await apiGetText("/api/game/skill.md", cfg, false, params.apiEndpoint);
+        return { markdown, bytes: markdown.length };
       }
     })
   ]

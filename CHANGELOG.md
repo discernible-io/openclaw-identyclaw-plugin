@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.0 — 2026-07-21
+
+- **SLC game tools:** `identyclaw_game_tasks`, `identyclaw_game_state`, `identyclaw_game_join`, `identyclaw_game_message_report`, `identyclaw_game_action`, `identyclaw_game_tick`, `identyclaw_game_skill` — call federated Synthetics' Last Cradle `/api/game/*` with the cached per-`apiEndpoint` JWT (never returned to the model).
+- **Tick:** one required submit per call (message-report defaults `0/0`, execution defaults `none`); returns `waitingOn` peers when the inbox is empty.
+
 ## 1.6.2 — 2026-07-17
 
 - ClawHub republish of multi-API session support (1.6.0/1.6.1 were reserved but not promoted on the registry).

@@ -49,7 +49,7 @@
       }
     }
   },
-  "version": "1.6.2",
+  "version": "1.7.0",
   "contracts": {
     "tools": [
       "identyclaw_ensure_session",
@@ -64,7 +64,14 @@
       "identyclaw_get_resource",
       "identyclaw_get_agent_identity",
       "identyclaw_check_subagent_signer",
-      "identyclaw_resolve_did"
+      "identyclaw_resolve_did",
+      "identyclaw_game_tasks",
+      "identyclaw_game_state",
+      "identyclaw_game_join",
+      "identyclaw_game_message_report",
+      "identyclaw_game_action",
+      "identyclaw_game_tick",
+      "identyclaw_game_skill"
     ]
   },
   "toolMetadata": {
@@ -96,6 +103,27 @@
       "optional": true
     },
     "identyclaw_resolve_did": {
+      "optional": true
+    },
+    "identyclaw_game_tasks": {
+      "optional": true
+    },
+    "identyclaw_game_state": {
+      "optional": true
+    },
+    "identyclaw_game_join": {
+      "optional": true
+    },
+    "identyclaw_game_message_report": {
+      "optional": true
+    },
+    "identyclaw_game_action": {
+      "optional": true
+    },
+    "identyclaw_game_tick": {
+      "optional": true
+    },
+    "identyclaw_game_skill": {
       "optional": true
     }
   }
