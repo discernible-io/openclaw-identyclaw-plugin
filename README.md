@@ -43,6 +43,7 @@ Install this plugin when Passport-authenticated agents need **IdentyClaw API log
 Your agent gets `identyclaw_*` tools for IdentyClaw HTTP without hand-rolling login signatures or HOLA lines:
 
 - `identyclaw_ensure_session` / `identyclaw_list_sessions` for multi-API JWT sessions (home + federated)
+- `identyclaw_request` for generic authenticated HTTP (`method` + `path` + optional `apiEndpoint`) — peer product routes live in that peer’s skill, not as plugin-specific tools
 - `identyclaw_list_agents` / `identyclaw_list_resources` / `identyclaw_get_resource` for public discovery and MCP docs
 - `identyclaw_get_my_identity` / `identyclaw_get_agent_identity` / `identyclaw_resolve_did` for Passport identity
 - `identyclaw_get_nonce` / `identyclaw_create_hola` / `identyclaw_verify_hola` for HOLA peer authentication

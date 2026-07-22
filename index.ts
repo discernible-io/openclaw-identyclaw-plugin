@@ -578,95 +578,76 @@ async function apiGetText(
   return resp.text();
 }
 
-type GameTask = {
-  gameId: string;
-  taskType: string;
-  required?: boolean;
-  action?: string;
-  description?: string;
-};
+const ALLOWED_HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 
-async function gameTick(
+/** Absolute API path only (no scheme/host); blocks traversal. */
+function normalizeRequestPath(rawPath: string): string {
+  const trimmed = rawPath.trim();
+  if (!trimmed.startsWith("/")) {
+    throw new Error("path must start with / (absolute path on the target API)");
+  }
+  if (trimmed.includes("://") || trimmed.startsWith("//")) {
+    throw new Error("path must not include a scheme or host — use apiEndpoint for the base URL");
+  }
+  if (trimmed.includes("..")) {
+    throw new Error("path must not contain ..");
+  }
+  return trimmed;
+}
+
+async function apiRequest(
   cfg: RuntimeConfig,
-  apiEndpoint: string | undefined,
   opts: {
-    sent?: number;
-    received?: number;
-    actionType?: string;
-    displayName?: string;
-  } = {}
+    method: string;
+    path: string;
+    body?: unknown;
+    auth?: boolean;
+    apiEndpoint?: string;
+    responseType?: "json" | "text";
+  }
 ): Promise<unknown> {
-  const inbox = (await apiGet("/api/game/tasks", cfg, true, apiEndpoint)) as {
-    tasks?: GameTask[];
-    waitingOn?: unknown[];
-    requestId?: string;
-  };
-  const tasks = inbox.tasks ?? [];
-  const required = tasks.find((t) => t.required) ?? tasks[0];
-  if (!required) {
-    return {
-      submitted: false,
-      reason: "no_pending_task",
-      tasks,
-      waitingOn: inbox.waitingOn ?? [],
-      requestId: inbox.requestId,
-      note: "Empty tasks does not mean the table is unblocked — check waitingOn for peer names."
-    };
+  const method = opts.method.trim().toUpperCase();
+  if (!ALLOWED_HTTP_METHODS.has(method)) {
+    throw new Error(`Unsupported method ${opts.method}; allowed: GET POST PUT PATCH DELETE`);
   }
-
-  if (required.taskType === "submit_message_report") {
-    const sent = opts.sent ?? 0;
-    const received = opts.received ?? 0;
-    const result = await apiPost(
-      `/api/game/games/${encodeURIComponent(required.gameId)}/message-report`,
-      { sent, received },
-      cfg,
-      true,
-      apiEndpoint
-    );
-    const after = (await apiGet("/api/game/tasks", cfg, true, apiEndpoint)) as {
-      waitingOn?: unknown[];
-    };
-    return {
-      submitted: true,
-      taskType: required.taskType,
-      gameId: required.gameId,
-      payload: { sent, received },
-      result,
-      waitingOn: after.waitingOn ?? []
-    };
+  const path = normalizeRequestPath(opts.path);
+  const auth = opts.auth !== false;
+  const responseType = opts.responseType ?? "json";
+  const target = resolveTargetApiUrl(cfg, opts.apiEndpoint);
+  const headers: Record<string, string> = {};
+  if (auth) {
+    headers.authorization = `Bearer ${await getJwt(cfg, target)}`;
   }
-
-  if (required.taskType === "submit_execution_action") {
-    const type = opts.actionType ?? "none";
-    const body = { type, action: type };
-    const result = await apiPost(
-      `/api/game/games/${encodeURIComponent(required.gameId)}/action`,
-      body,
-      cfg,
-      true,
-      apiEndpoint
-    );
-    const after = (await apiGet("/api/game/tasks", cfg, true, apiEndpoint)) as {
-      waitingOn?: unknown[];
-    };
-    return {
-      submitted: true,
-      taskType: required.taskType,
-      gameId: required.gameId,
-      payload: body,
-      result,
-      waitingOn: after.waitingOn ?? []
-    };
+  const init: RequestInit = { method, headers };
+  if (opts.body !== undefined && method !== "GET" && method !== "DELETE") {
+    headers["content-type"] = "application/json";
+    init.body = JSON.stringify(opts.body);
   }
-
-  return {
-    submitted: false,
-    reason: "unsupported_task",
-    task: required,
-    waitingOn: inbox.waitingOn ?? [],
-    note: "Use negotiation message or join tools for this taskType; tick only auto-submits message-report and execution."
-  };
+  const resp = await fetch(`${target}${path}`, init);
+  if (!resp.ok) {
+    const errorBody = await readErrorBody(resp);
+    throw new Error(`${method} ${path} on ${target} failed: HTTP ${resp.status} — ${errorBody}`);
+  }
+  if (auth) {
+    applyNewTokenFromResponse(resp, target, cfg.baseUrl);
+  }
+  if (responseType === "text") {
+    const text = await resp.text();
+    return { status: resp.status, contentType: resp.headers.get("content-type"), text };
+  }
+  const contentType = resp.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return resp.json();
+  }
+  const text = await resp.text();
+  if (!text) {
+    return { status: resp.status, empty: true };
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { status: resp.status, contentType, text };
+  }
 }
 
 export default (() => {
@@ -950,144 +931,41 @@ export default (() => {
       }
     }),
     tool({
-      name: "identyclaw_game_tasks",
-      label: "SLC Game Tasks",
+      name: "identyclaw_request",
+      label: "API Request",
       description:
-        "GET /api/game/tasks on a federated SLC apiEndpoint — returns tasks plus waitingOn peer names. Empty tasks ≠ unblocked. Prefer apiEndpoint https://slc.discernible.io:8443.",
+        "Generic authenticated HTTP to the home baseUrl or a federated apiEndpoint. Auto-logins and caches a JWT per URL (never returned). Pass absolute path only (e.g. /api/game/tasks). Use responseType text for markdown/plain. Prefer this over hand-rolled curl. Product-specific routes belong in the peer API skill, not plugin tools.",
       parameters: Type.Object({
-        includeFinished: Type.Optional(Type.Boolean()),
+        method: Type.String({ description: "GET | POST | PUT | PATCH | DELETE" }),
+        path: Type.String({
+          description: "Absolute path on the target API, including query string if needed (must start with /)"
+        }),
+        body: Type.Optional(Type.Unknown({ description: "JSON body for POST/PUT/PATCH" })),
+        auth: Type.Optional(
+          Type.Boolean({
+            description: "Attach Bearer JWT (default true). Set false for public routes."
+          })
+        ),
+        responseType: Type.Optional(
+          Type.String({ description: "json (default) or text" })
+        ),
         apiEndpoint: apiEndpointParam
       }),
       optional: true,
       async execute(params, config) {
         const cfg = resolveConfig(config);
-        const q = params.includeFinished ? "?includeFinished=true" : "";
-        return apiGet(`/api/game/tasks${q}`, cfg, true, params.apiEndpoint);
-      }
-    }),
-    tool({
-      name: "identyclaw_game_state",
-      label: "SLC Game State",
-      description:
-        "GET /api/game/games/{gameId}/state — phase, pending messageReport/execution seats, inventories.",
-      parameters: Type.Object({
-        gameId: Type.String({ description: "Game ULID" }),
-        apiEndpoint: apiEndpointParam
-      }),
-      optional: true,
-      async execute(params, config) {
-        const cfg = resolveConfig(config);
-        return apiGet(
-          `/api/game/games/${encodeURIComponent(params.gameId)}/state`,
-          cfg,
-          true,
-          params.apiEndpoint
-        );
-      }
-    }),
-    tool({
-      name: "identyclaw_game_join",
-      label: "SLC Join Game",
-      description: "POST /api/game/games/{gameId}/join with optional displayName.",
-      parameters: Type.Object({
-        gameId: Type.String({ description: "Game ULID" }),
-        displayName: Type.Optional(Type.String()),
-        apiEndpoint: apiEndpointParam
-      }),
-      optional: true,
-      async execute(params, config) {
-        const cfg = resolveConfig(config);
-        const body: Record<string, string> = {};
-        if (params.displayName) body.displayName = params.displayName;
-        return apiPost(
-          `/api/game/games/${encodeURIComponent(params.gameId)}/join`,
-          body,
-          cfg,
-          true,
-          params.apiEndpoint
-        );
-      }
-    }),
-    tool({
-      name: "identyclaw_game_message_report",
-      label: "SLC Message Report",
-      description: "POST /api/game/games/{gameId}/message-report with sent/received counts.",
-      parameters: Type.Object({
-        gameId: Type.String({ description: "Game ULID" }),
-        sent: Type.Number({ description: "Messages sent this negotiation" }),
-        received: Type.Number({ description: "Messages received this negotiation" }),
-        apiEndpoint: apiEndpointParam
-      }),
-      optional: true,
-      async execute(params, config) {
-        const cfg = resolveConfig(config);
-        return apiPost(
-          `/api/game/games/${encodeURIComponent(params.gameId)}/message-report`,
-          { sent: params.sent, received: params.received },
-          cfg,
-          true,
-          params.apiEndpoint
-        );
-      }
-    }),
-    tool({
-      name: "identyclaw_game_action",
-      label: "SLC Execution Action",
-      description:
-        "POST /api/game/games/{gameId}/action — type none|transfer|invest (and optional transfer/invest fields per OpenAPI).",
-      parameters: Type.Object({
-        gameId: Type.String({ description: "Game ULID" }),
-        type: Type.String({ description: "none | transfer | invest" }),
-        payload: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-        apiEndpoint: apiEndpointParam
-      }),
-      optional: true,
-      async execute(params, config) {
-        const cfg = resolveConfig(config);
-        const body = { type: params.type, action: params.type, ...(params.payload ?? {}) };
-        return apiPost(
-          `/api/game/games/${encodeURIComponent(params.gameId)}/action`,
-          body,
-          cfg,
-          true,
-          params.apiEndpoint
-        );
-      }
-    }),
-    tool({
-      name: "identyclaw_game_tick",
-      label: "SLC Game Tick",
-      description:
-        "One heartbeat step on SLC: read tasks; if submit_message_report or submit_execution_action is required, submit once (defaults sent/received 0 and action none); return waitingOn. Call after identyclaw_ensure_session({ apiEndpoint }).",
-      parameters: Type.Object({
-        sent: Type.Optional(Type.Number()),
-        received: Type.Optional(Type.Number()),
-        actionType: Type.Optional(Type.String({ description: "Default none" })),
-        apiEndpoint: apiEndpointParam
-      }),
-      optional: true,
-      async execute(params, config) {
-        const cfg = resolveConfig(config);
-        return gameTick(cfg, params.apiEndpoint, {
-          sent: params.sent,
-          received: params.received,
-          actionType: params.actionType
+        const responseType =
+          params.responseType === "text" || params.responseType === "json"
+            ? params.responseType
+            : "json";
+        return apiRequest(cfg, {
+          method: params.method,
+          path: params.path,
+          body: params.body,
+          auth: params.auth,
+          apiEndpoint: params.apiEndpoint,
+          responseType
         });
-      }
-    }),
-    tool({
-      name: "identyclaw_game_skill",
-      label: "SLC Game Skill",
-      description:
-        "GET /api/game/skill.md — live playbook. Require version >= 1.4.0 and api_base with :8443.",
-      parameters: Type.Object({
-        apiEndpoint: apiEndpointParam
-      }),
-      optional: true,
-      async execute(params, config) {
-        const cfg = resolveConfig(config);
-        const markdown = await apiGetText("/api/game/skill.md", cfg, false, params.apiEndpoint);
-        return { markdown, bytes: markdown.length };
       }
     })
   ]

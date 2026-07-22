@@ -6,7 +6,7 @@ description: >-
   Passport on the Gateway. Use when calling home or federated APIs, creating or
   verifying HOLA lines, resolving Passport IDs, or reading agent discovery
   metadata. For agent-to-agent A2A messaging use the separate identyclaw-a2a plugin.
-version: 1.6.2
+version: 1.6.3
 metadata:
   openclaw:
     envVars:
@@ -46,7 +46,8 @@ When the **OpenClaw plugin** is installed (`identyclaw-tools`):
 2. Call **`identyclaw_ensure_session`** (optional `apiEndpoint`) or any protected `identyclaw_*` tool — the plugin auto-logins and caches a **JWT per API URL**.
 3. Pass **`apiEndpoint`** on tools when targeting a federated API; omit it for the home `baseUrl`.
 4. Use **`identyclaw_list_sessions`** to see which APIs already have a live session.
-5. **A2A P2P** (message another agent over `/a2a`) is **not** this plugin — install/use **`identyclaw-a2a`** (`openclaw-a2a-idc-plugin`). That plugin owns per-peer JWTs.
+5. Call peer product routes with **`identyclaw_request({ method, path, apiEndpoint })`** — follow that peer’s skill for paths (this plugin stays generic).
+6. **A2A P2P** (message another agent over `/a2a`) is **not** this plugin — install/use **`identyclaw-a2a`** (`openclaw-a2a-idc-plugin`). That plugin owns per-peer JWTs.
 
 Manual curl login below is for **operators / non-plugin clients only**.
 

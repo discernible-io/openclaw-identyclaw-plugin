@@ -1,9 +1,13 @@
 # Changelog
 
+## 1.8.0 — 2026-07-22
+
+- **Generic HTTP:** `identyclaw_request({ method, path, body?, auth?, responseType?, apiEndpoint? })` — authenticated fetch against home or federated URLs; JWT stays in the plugin cache.
+- **Removed product-specific tools:** `identyclaw_game_*` (SLC). Peer APIs document their routes in their own skills; agents call those paths via `identyclaw_request` after `identyclaw_ensure_session`.
+
 ## 1.7.0 — 2026-07-21
 
-- **SLC game tools:** `identyclaw_game_tasks`, `identyclaw_game_state`, `identyclaw_game_join`, `identyclaw_game_message_report`, `identyclaw_game_action`, `identyclaw_game_tick`, `identyclaw_game_skill` — call federated Synthetics' Last Cradle `/api/game/*` with the cached per-`apiEndpoint` JWT (never returned to the model).
-- **Tick:** one required submit per call (message-report defaults `0/0`, execution defaults `none`); returns `waitingOn` peers when the inbox is empty.
+- **SLC game tools (removed in 1.8.0):** temporary `/api/game/*` wrappers — superseded by generic `identyclaw_request` + peer skill paths.
 
 ## 1.6.2 — 2026-07-17
 
