@@ -251,7 +251,7 @@ Returns: `implicit_account_id`, `public_key`, `filePath` — not `private_key`.
 
 Deprecated config alias: `roditid` → use `accountid`.
 
-Most HTTP tools accept optional **`apiEndpoint`** to select home or a federated host for that call.
+Most HTTP tools accept optional **`apiEndpoint`**. Federation shares **Rodit login only** — a federated peer may expose arbitrary product routes and need not implement home IdentyClaw paths (`/api/me/identity`, HOLA, DID, …). For federated product work: `identyclaw_ensure_session` → discover → `identyclaw_request`. Keep Passport/HOLA/DID tools on the home `baseUrl` unless you know the peer is a full IdentyClaw replica.
 
 For smoke tests you may pass a pre-obtained API bearer token instead of login bootstrap:
 
@@ -311,10 +311,20 @@ Optional tools are off by default in the manifest; allowlist them in OpenClaw co
 
 ```
 accountid + nearPrivateKey  →  auto POST /api/login (per apiEndpoint)  →  cached jwt_token
-identyclaw_ensure_session / identyclaw_get_my_identity (± apiEndpoint)
+identyclaw_ensure_session
+identyclaw_get_my_identity          # home baseUrl (omit apiEndpoint)
 ```
 
-Federated example: keep home session on `baseUrl` and call tools with `apiEndpoint: "https://api-b.example.com"`.
+### 1b. Federated product peer
+
+```
+identyclaw_ensure_session({ apiEndpoint })   # Rodit login only
+identyclaw_list_resources / get_resource     # discover peer surface
+identyclaw_request({ method, path, apiEndpoint })  # arbitrary peer routes
+# Do NOT call identyclaw_get_my_identity against the federated host
+```
+
+Federated example: keep home session on `baseUrl` for Passport/HOLA; open a second session for the peer and call **that peer’s** paths via `identyclaw_request`.
 
 ### 2. Outbound HOLA (intro to a peer)
 

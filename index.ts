@@ -107,7 +107,7 @@ const configSchema = Type.Object(
 const apiEndpointParam = Type.Optional(
   Type.String({
     description:
-      "API base URL for this call (home or federated). Default: plugin baseUrl. Plugin auto-logins and caches a JWT per URL — do not hand-roll POST /api/login."
+      "API base URL for this call. Default: plugin home baseUrl. Federation shares Rodit login only — do not assume home IdentyClaw routes exist on a federated peer. For arbitrary peer paths use identyclaw_ensure_session + discover + identyclaw_request. Plugin auto-logins and caches a JWT per URL — do not hand-roll POST /api/login."
   })
 );
 
@@ -418,7 +418,11 @@ type SessionInfo = {
   expiresAtIso: string;
   expiresInSec: number;
   warning?: string;
+  note?: string;
 };
+
+const FEDERATED_SESSION_NOTE =
+  "Federated session ready. Peers share Rodit login only — product routes are arbitrary. Do not call home IdentyClaw tools (e.g. identyclaw_get_my_identity /api/me/identity) against this host unless you know it implements them. Discover via identyclaw_list_resources / peer skill / OpenAPI, then use identyclaw_request. Keep Passport/HOLA/DID tools on homeBaseUrl (omit apiEndpoint).";
 
 function toSessionInfo(entry: LoginCache, homeBaseUrl: string, warning?: string): SessionInfo {
   const expiresInSec = Math.max(0, Math.floor((entry.expiresAtMs - Date.now()) / 1000));
@@ -428,7 +432,8 @@ function toSessionInfo(entry: LoginCache, homeBaseUrl: string, warning?: string)
     federated: entry.federated,
     expiresAtIso: new Date(entry.expiresAtMs).toISOString(),
     expiresInSec,
-    ...(warning ? { warning } : {})
+    ...(warning ? { warning } : {}),
+    ...(entry.federated ? { note: FEDERATED_SESSION_NOTE } : {})
   };
 }
 
@@ -662,7 +667,7 @@ export default (() => {
       name: "identyclaw_ensure_session",
       label: "Ensure API Session",
       description:
-        "Ensure an API JWT session for the home baseUrl or a federated apiEndpoint. Prefer this over hand-rolling POST /api/login. Returns session metadata only (never the JWT). Concurrent sessions are cached per API URL. For agent-to-agent P2P messaging use the identyclaw-a2a plugin, not this tool.",
+        "Ensure an API JWT session for the home baseUrl or a federated apiEndpoint. Prefer this over hand-rolling POST /api/login. Returns session metadata only (never the JWT). When federated=true, product routes are peer-specific — discover then use identyclaw_request; do not assume home IdentyClaw paths. Concurrent sessions are cached per API URL. For agent-to-agent P2P messaging use the identyclaw-a2a plugin, not this tool.",
       parameters: Type.Object({
         apiEndpoint: apiEndpointParam
       }),
@@ -689,14 +694,14 @@ export default (() => {
           homeBaseUrl: cfg.baseUrl,
           configuredApiEndpoints: cfg.apiEndpoints,
           sessions,
-          note: "Do not hand-roll login. Pass apiEndpoint on identyclaw_* tools or call identyclaw_ensure_session. A2A P2P uses openclaw-a2a-idc-plugin."
+          note: "Do not hand-roll login. Federated peers share Rodit login only — discover their routes, then use identyclaw_request. Keep Passport/HOLA/DID tools on homeBaseUrl. Call identyclaw_ensure_session for missing sessions. A2A P2P uses openclaw-a2a-idc-plugin."
         };
       }
     }),
     tool({
       name: "identyclaw_list_agents",
       label: "List Agents",
-      description: "List public identyclaw agents",
+      description: "List public IdentyClaw agents (GET /api/agents). Default: home API — do not assume federated product hosts expose this.",
       parameters: Type.Object({
         limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
         cursor: Type.Optional(Type.String()),
@@ -715,7 +720,7 @@ export default (() => {
       name: "identyclaw_get_my_identity",
       label: "My Identity",
       description:
-        "GET /api/me/identity — caller Passport (auto-login JWT; not a HOLA line). Optional apiEndpoint for federated APIs.",
+        "GET /api/me/identity — caller Passport on the IdentyClaw home API (auto-login JWT; not a HOLA line). Default: home baseUrl. Do not pass a federated product host unless you know it implements this path — use ensure_session + discover + identyclaw_request instead.",
       parameters: Type.Object({
         apiEndpoint: apiEndpointParam
       }),
@@ -729,7 +734,7 @@ export default (() => {
       name: "identyclaw_get_nonce",
       label: "HOLA Nonce",
       description:
-        "HOLA lane: GET /api/holanonce16ts (auto-login JWT). Returns noncetsHex + timestamp for HOLA — not login timestamp_iso.",
+        "HOLA lane: GET /api/holanonce16ts (auto-login JWT). Returns noncetsHex + timestamp for HOLA — not login timestamp_iso. Default: home IdentyClaw API — do not assume federated peers implement this path.",
       parameters: Type.Object({
         apiEndpoint: apiEndpointParam
       }),
@@ -743,7 +748,7 @@ export default (() => {
       name: "identyclaw_create_hola",
       label: "Create HOLA",
       description:
-        "HOLA lane: fetch nonce (auto-login) then sign outbound HOLA locally with nearPrivateKey. Signer from GET /api/me/identity; only recipient may be supplied. Optional apiEndpoint selects which API issues the nonce/session.",
+        "HOLA lane: fetch nonce (auto-login) then sign outbound HOLA locally with nearPrivateKey. Signer from GET /api/me/identity on the IdentyClaw home API; only recipient may be supplied. Default: home baseUrl — do not point apiEndpoint at an arbitrary federated product host.",
       parameters: Type.Object({
         recipient: Type.Optional(
           Type.String({
@@ -777,7 +782,7 @@ export default (() => {
       name: "identyclaw_verify_hola",
       label: "Verify HOLA",
       description:
-        "HOLA lane: POST /api/identity/verify with peer HOLA line (auto-login authorizes the call; payload is the HOLA string, not a JWT)",
+        "HOLA lane: POST /api/identity/verify with peer HOLA line (auto-login authorizes the call; payload is the HOLA string, not a JWT). Default: home IdentyClaw API — do not assume federated product hosts implement this path.",
       parameters: Type.Object({
         hola: Type.String({ description: "Full HOLA handshake line from another agent" }),
         maxAgeMs: Type.Optional(Type.Number({ minimum: 1 })),
@@ -843,7 +848,7 @@ export default (() => {
     tool({
       name: "identyclaw_list_resources",
       label: "List Resources",
-      description: "List identyclaw MCP-style resources",
+      description: "List MCP-style resources (GET /api/mcp/resources). Useful for discovering a federated peer’s docs/OpenAPI when that host exposes them.",
       parameters: Type.Object({
         limit: Type.Optional(Type.Number({ minimum: 1 })),
         cursor: Type.Optional(Type.String()),
@@ -861,7 +866,7 @@ export default (() => {
     tool({
       name: "identyclaw_get_resource",
       label: "Get Resource",
-      description: "Fetch one identyclaw MCP-style resource by URI",
+      description: "Fetch one MCP-style resource by URI (GET /api/mcp/resource/{uri}). Preferred discovery step on federated peers after ensure_session.",
       parameters: Type.Object({
         uri: Type.String(),
         apiEndpoint: apiEndpointParam
@@ -879,7 +884,7 @@ export default (() => {
       name: "identyclaw_get_agent_identity",
       label: "Agent Identity",
       description:
-        "GET /api/identity/token/{tokenId}/full — resolve Passport to DN, contactUri, and traits",
+        "GET /api/identity/token/{tokenId}/full — resolve Passport to DN, contactUri, and traits. Default: home IdentyClaw API — do not assume federated product hosts implement this path.",
       parameters: Type.Object({
         tokenId: Type.String({ description: "12-letter lowercase Passport ID" }),
         apiEndpoint: apiEndpointParam
@@ -918,7 +923,7 @@ export default (() => {
     tool({
       name: "identyclaw_resolve_did",
       label: "Resolve DID",
-      description: "GET /.well-known/did/resolve?did=did:rodit:{tokenId} — DID document for peer",
+      description: "GET /.well-known/did/resolve?did=did:rodit:{tokenId} — DID document. Default: home IdentyClaw API.",
       parameters: Type.Object({
         tokenId: Type.String({ description: "12-letter lowercase Passport ID" }),
         apiEndpoint: apiEndpointParam
@@ -934,7 +939,7 @@ export default (() => {
       name: "identyclaw_request",
       label: "API Request",
       description:
-        "Generic authenticated HTTP to the home baseUrl or a federated apiEndpoint. Auto-logins and caches a JWT per URL (never returned). Pass absolute path only (e.g. /api/game/tasks). Use responseType text for markdown/plain. Prefer this over hand-rolled curl. Product-specific routes belong in the peer API skill, not plugin tools.",
+        "Generic authenticated HTTP to the home baseUrl or a federated apiEndpoint. Auto-logins and caches a JWT per URL (never returned). Pass absolute path only (e.g. /api/game/tasks). Use responseType text for markdown/plain. Prefer this over hand-rolled curl. This is the correct way to call arbitrary federated product routes after ensure_session + discovery — peer skills define paths; do not invent home IdentyClaw tools against the peer.",
       parameters: Type.Object({
         method: Type.String({ description: "GET | POST | PUT | PATCH | DELETE" }),
         path: Type.String({

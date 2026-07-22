@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.1 — 2026-07-22
+
+- **Federated route clarity:** federation shares Rodit login only — peers may expose arbitrary product paths. Skill + tool descriptions no longer teach `identyclaw_get_my_identity` (or other home IdentyClaw routes) against federated hosts.
+- **`identyclaw_ensure_session`:** when `federated: true`, response includes a `note` steering agents to discover → `identyclaw_request`, and to keep Passport/HOLA/DID tools on `homeBaseUrl`.
+
 ## 1.8.0 — 2026-07-22
 
 - **Generic HTTP:** `identyclaw_request({ method, path, body?, auth?, responseType?, apiEndpoint? })` — authenticated fetch against home or federated URLs; JWT stays in the plugin cache.

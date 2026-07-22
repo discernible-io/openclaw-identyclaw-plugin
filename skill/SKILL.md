@@ -6,7 +6,7 @@ description: >-
   Passport on the Gateway. Use when calling home or federated APIs, creating or
   verifying HOLA lines, resolving Passport IDs, or reading agent discovery
   metadata. For agent-to-agent A2A messaging use the separate identyclaw-a2a plugin.
-version: 1.6.3
+version: 1.8.1
 metadata:
   openclaw:
     envVars:
@@ -28,7 +28,7 @@ metadata:
 # IdentyClaw
 
 **Home API (default):** `https://api.identyclaw.com`  
-**Federated example:** `https://api-b.example.com` (same SR/CR family; configure via `apiEndpoints`)
+**Federated example:** `https://api-b.example.com` (same Rodit login family; configure via `apiEndpoints`)
 
 IdentyClaw is an HTTP API for IdentyClaw Passport holders and the **HOLA** mutual authentication protocol. This skill is the **runnable cheat sheet**; deep specs live in bundled `references/` and MCP `doc:*` resources.
 
@@ -38,16 +38,29 @@ IdentyClaw is an HTTP API for IdentyClaw Passport holders and the **HOLA** mutua
 
 ---
 
+## Home vs federated — do not assume shared routes
+
+Federation shares **Rodit login** only (`GET /api/login/timestamp` → sign → `POST /api/login` → JWT cached per URL). A federated peer may expose **any** product routes. It does **not** inherit the home IdentyClaw surface (`/api/me/identity`, HOLA, DID, `/api/agents`, …).
+
+| Target | What to call |
+| --- | --- |
+| **Home** (`baseUrl`, omit `apiEndpoint`) | Passport/HOLA/DID tools: `identyclaw_get_my_identity`, `identyclaw_create_hola`, `identyclaw_verify_hola`, `identyclaw_get_agent_identity`, `identyclaw_resolve_did`, … |
+| **Federated peer** (`apiEndpoint=…`) | `identyclaw_ensure_session` → **discover** (`identyclaw_list_resources` / `identyclaw_get_resource` / peer skill.md / OpenAPI) → **product calls** via `identyclaw_request({ method, path, apiEndpoint })` |
+
+**Never** probe home-only tools against a federated host “to see if they work.” A 404 on `/api/me/identity` is expected when that peer does not implement it — not a login failure.
+
+---
+
 ## Agent rule — do not hand-roll login
 
 When the **OpenClaw plugin** is installed (`identyclaw-tools`):
 
 1. **Never** curl `GET /api/login/timestamp` or `POST /api/login`, and never invent Ed25519 signatures in chat.
-2. Call **`identyclaw_ensure_session`** (optional `apiEndpoint`) or any protected `identyclaw_*` tool — the plugin auto-logins and caches a **JWT per API URL**.
-3. Pass **`apiEndpoint`** on tools when targeting a federated API; omit it for the home `baseUrl`.
-4. Use **`identyclaw_list_sessions`** to see which APIs already have a live session.
-5. Call peer product routes with **`identyclaw_request({ method, path, apiEndpoint })`** — follow that peer’s skill for paths (this plugin stays generic).
-6. **A2A P2P** (message another agent over `/a2a`) is **not** this plugin — install/use **`identyclaw-a2a`** (`openclaw-a2a-idc-plugin`). That plugin owns per-peer JWTs.
+2. Call **`identyclaw_ensure_session`** (optional `apiEndpoint`) — the plugin auto-logins and caches a **JWT per API URL**.
+3. **Home tools stay on home:** omit `apiEndpoint` for Passport/HOLA/DID helpers unless you already know that host implements those IdentyClaw paths.
+4. **Federated product work:** after `ensure_session`, discover that peer’s routes, then call them with **`identyclaw_request`** — do not reuse home tool paths.
+5. Use **`identyclaw_list_sessions`** to see which APIs already have a live session.
+6. **A2A P2P** (message another agent over `/a2a`) is **not** this plugin — install/use **`identyclaw-a2a`**. That plugin owns per-peer JWTs.
 
 Manual curl login below is for **operators / non-plugin clients only**.
 
@@ -136,23 +149,30 @@ Cheat sheet:           doc:skills
 |---|------|--------|------|
 | 1 | API session (home or federated) | `identyclaw_ensure_session` ± `apiEndpoint` | API login |
 | 2 | List live sessions | `identyclaw_list_sessions` | API login |
-| 3 | **Create outbound HOLA line** | `identyclaw_create_hola` (± `apiEndpoint`) | HOLA (+ API session) |
-| 4 | **Verify peer HOLA line** | `identyclaw_verify_hola` (± `apiEndpoint`) | HOLA (+ API session) |
-| 5 | Resolve Passport → full DN | `identyclaw_get_agent_identity` | API session |
-| 6 | List public agents | `identyclaw_list_agents` | Public |
-| 7 | Resolve DID | `identyclaw_resolve_did` | API session |
-| 8 | Message another agent (A2A) | **`identyclaw-a2a` plugin** (not this skill’s HTTP tools) | A2A P2P |
+| 3 | Discover federated peer routes | `identyclaw_list_resources` / `get_resource` / peer skill + `identyclaw_request` | Federated product |
+| 4 | **Create outbound HOLA line** | `identyclaw_create_hola` (home) | HOLA (+ home session) |
+| 5 | **Verify peer HOLA line** | `identyclaw_verify_hola` (home) | HOLA (+ home session) |
+| 6 | Resolve Passport → full DN | `identyclaw_get_agent_identity` (home) | Home API session |
+| 7 | List public agents | `identyclaw_list_agents` (home) | Public |
+| 8 | Resolve DID | `identyclaw_resolve_did` (home) | Home API session |
+| 9 | Message another agent (A2A) | **`identyclaw-a2a` plugin** (not this skill’s HTTP tools) | A2A P2P |
 
 ### 1. API session (plugin — preferred)
 
 ```text
+# Home identity / HOLA / DID
 identyclaw_ensure_session
-identyclaw_ensure_session  apiEndpoint=https://api-b.example.com
-identyclaw_get_my_identity apiEndpoint=https://api-b.example.com
+identyclaw_get_my_identity
 identyclaw_list_sessions
+
+# Federated peer — login + discover + product routes (arbitrary paths)
+identyclaw_ensure_session   apiEndpoint=https://api-b.example.com
+identyclaw_list_resources   apiEndpoint=https://api-b.example.com
+identyclaw_get_resource     uri=doc:discovery  apiEndpoint=https://api-b.example.com
+identyclaw_request          method=GET path=/…  apiEndpoint=https://api-b.example.com
 ```
 
-Sessions are **cached per URL**. You can be logged into home and federated APIs **at the same time**.
+Sessions are **cached per URL**. You can be logged into home and federated APIs **at the same time**. Federated login does **not** mean the peer implements home IdentyClaw routes.
 
 ### 1b. Manual API login (operators / non-plugin only)
 
@@ -197,18 +217,18 @@ Use **`identyclaw_verify_hola`** with the exact HOLA string. The JWT only author
 
 Trust only when `verified: true`. Diagnostics: [`references/hola-agent-authentication.md`](references/hola-agent-authentication.md#verification-result-diagnostics-apidentityverify).
 
-### 4–7. Identity, discovery, DID
+### 4–8. Identity, discovery, DID (home API)
 
-Prefer plugin tools (`identyclaw_get_agent_identity`, `identyclaw_list_agents`, `identyclaw_resolve_did`) with optional `apiEndpoint`.
+Prefer plugin tools on the **home** `baseUrl` (`identyclaw_get_agent_identity`, `identyclaw_list_agents`, `identyclaw_resolve_did`). Only pass `apiEndpoint` when you already know that host implements the same IdentyClaw path.
 
 ---
 
 ## First contact from an unknown agent
 
-1. **API session** — `identyclaw_ensure_session` (do not curl login).
+1. **Home API session** — `identyclaw_ensure_session` (do not curl login).
 2. **Verify HOLA line** — `identyclaw_verify_hola` with the exact string received (not a JWT).
 3. **If `verified: true`** — note `peerTokenId`.
-4. **Lookup** — `identyclaw_get_agent_identity`.
+4. **Lookup** — `identyclaw_get_agent_identity` (home).
 5. **Impersonation guard** — compare `peerTokenId` to officially published Passport ID. [`references/finding-agents.md`](references/finding-agents.md#5-guard-against-impersonation).
 6. **Subagent** — `identyclaw_check_subagent_signer` when delegation fields present. [`references/hola-subagent-authentication.md`](references/hola-subagent-authentication.md).
 7. **Ongoing messaging** — use **A2A** (`identyclaw-a2a`), not repeated HOLA for every turn.
@@ -227,35 +247,31 @@ Plugin **v1.6.0+** · tool reference: [README.md](https://github.com/discernible
 
 | Tool | Role |
 | --- | --- |
-| `identyclaw_ensure_session` | Open/refresh session for home or `apiEndpoint` (no JWT returned) |
+| `identyclaw_ensure_session` | Open/refresh session for home or `apiEndpoint` (no JWT returned). Federated responses include a discover-then-`identyclaw_request` hint. |
 | `identyclaw_list_sessions` | List cached multi-API sessions |
 
-### Public (no API session)
+### Discovery / generic HTTP (safe on federated peers)
+
+| Tool | Role |
+| --- | --- |
+| `identyclaw_list_resources` | `GET /api/mcp/resources` — if the peer exposes MCP docs |
+| `identyclaw_get_resource` | `GET /api/mcp/resource/{uri}` |
+| `identyclaw_request` | Arbitrary `method` + `path` on home or federated host |
+
+### Home IdentyClaw surface (default: omit `apiEndpoint`)
 
 | Tool | Endpoint |
 | --- | --- |
 | `identyclaw_list_agents` | `GET /api/agents` |
-| `identyclaw_list_resources` | `GET /api/mcp/resources` |
-| `identyclaw_get_resource` | `GET /api/mcp/resource/{uri}` |
-
-### API session only
-
-| Tool | Endpoint |
-| --- | --- |
 | `identyclaw_get_my_identity` | `GET /api/me/identity` |
 | `identyclaw_get_agent_identity` | `GET /api/identity/token/{tokenId}/full` |
 | `identyclaw_check_subagent_signer` | `POST /api/isauthorizedsigner` |
 | `identyclaw_resolve_did` | `GET /.well-known/did/resolve` |
+| `identyclaw_get_nonce` | `GET /api/holanonce16ts` |
+| `identyclaw_create_hola` | local HOLA sign; signer from `/api/me/identity` |
+| `identyclaw_verify_hola` | `POST /api/identity/verify` |
 
-### HOLA protocol
-
-| Tool | Notes |
-| --- | --- |
-| `identyclaw_get_nonce` | `GET /api/holanonce16ts` — HOLA nonce fields |
-| `identyclaw_create_hola` | API session + local HOLA sign (`nearPrivateKey`); signer from `/api/me/identity`, optional `recipient` only |
-| `identyclaw_verify_hola` | API session + peer HOLA line → `POST /api/identity/verify` |
-
-Most HTTP tools accept optional **`apiEndpoint`**. Allowlist optional tools in `tools.allow` when credentials are configured.
+These home-surface tools still accept `apiEndpoint` for rare full IdentyClaw replicas — **do not** pass a federated product host unless you know it implements that path. Allowlist optional tools in `tools.allow` when credentials are configured.
 
 **ClawHub skill (this bundle):** `openclaw skills install clawhub:identyclaw`
 
