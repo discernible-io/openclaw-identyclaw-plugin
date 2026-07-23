@@ -6,7 +6,7 @@ description: >-
   Passport on the Gateway. Use when calling home or federated APIs, creating or
   verifying HOLA lines, resolving Passport IDs, or reading agent discovery
   metadata. For agent-to-agent A2A messaging use the separate identyclaw-a2a plugin.
-version: 1.8.2
+version: 1.8.3
 metadata:
   openclaw:
     envVars:
