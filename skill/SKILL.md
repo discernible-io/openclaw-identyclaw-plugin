@@ -6,7 +6,7 @@ description: >-
   Passport on the Gateway. Use when calling home or federated APIs, creating or
   verifying HOLA lines, resolving Passport IDs, or reading agent discovery
   metadata. For agent-to-agent A2A messaging use the separate identyclaw-a2a plugin.
-version: 1.8.1
+version: 1.8.2
 metadata:
   openclaw:
     envVars:
@@ -257,6 +257,7 @@ Plugin **v1.6.0+** · tool reference: [README.md](https://github.com/discernible
 | `identyclaw_list_resources` | `GET /api/mcp/resources` — if the peer exposes MCP docs |
 | `identyclaw_get_resource` | `GET /api/mcp/resource/{uri}` |
 | `identyclaw_request` | Arbitrary `method` + `path` on home or federated host |
+| `identyclaw_game_tick` | SLC only: ensure session + submit one required message-report/action (safe defaults). Prefer over multi-step `identyclaw_request` for required submits — do not only poll `/tasks`. Pass `apiEndpoint` for the game host. |
 
 ### Home IdentyClaw surface (default: omit `apiEndpoint`)
 

@@ -49,7 +49,7 @@
       }
     }
   },
-  "version": "1.8.1",
+  "version": "1.8.3",
   "contracts": {
     "tools": [
       "identyclaw_ensure_session",
@@ -65,7 +65,8 @@
       "identyclaw_get_agent_identity",
       "identyclaw_check_subagent_signer",
       "identyclaw_resolve_did",
-      "identyclaw_request"
+      "identyclaw_request",
+      "identyclaw_game_tick"
     ]
   },
   "toolMetadata": {
@@ -100,6 +101,9 @@
       "optional": true
     },
     "identyclaw_request": {
+      "optional": true
+    },
+    "identyclaw_game_tick": {
       "optional": true
     }
   }

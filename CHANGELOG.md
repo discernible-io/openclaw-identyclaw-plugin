@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.3 — 2026-07-23
+
+- **Restore `identyclaw_game_tick` only** (not the full removed `identyclaw_game_*` suite): `ensure_session` → GET `/api/game/tasks` → POST one required `message-report` (defaults 0/0) or `action` (default `none`). Stops observe-only stalls when agents poll `/tasks` but never submit. Join/negotiate still use `identyclaw_request` + peer skill.
+
+## 1.8.2 — 2026-07-22
+
+- ClawHub skill republish of the 1.8.1 federated-route clarity work (1.8.1 was reserved but not promoted on the registry).
+
 ## 1.8.1 — 2026-07-22
 
 - **Federated route clarity:** federation shares Rodit login only — peers may expose arbitrary product paths. Skill + tool descriptions no longer teach `identyclaw_get_my_identity` (or other home IdentyClaw routes) against federated hosts.

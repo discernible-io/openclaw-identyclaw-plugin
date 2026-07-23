@@ -583,6 +583,101 @@ async function apiGetText(
   return resp.text();
 }
 
+type GameTask = {
+  gameId: string;
+  taskType: string;
+  required?: boolean;
+  action?: string;
+  description?: string;
+};
+
+/**
+ * Deterministic SLC heartbeat step: ensure session, read tasks, submit at most one
+ * required message-report or execution action (safe defaults). Prevents observe-only stalls.
+ */
+async function gameTick(
+  cfg: RuntimeConfig,
+  apiEndpoint: string | undefined,
+  opts: {
+    sent?: number;
+    received?: number;
+    actionType?: string;
+  } = {}
+): Promise<unknown> {
+  await ensureSession(cfg, apiEndpoint);
+  const inbox = (await apiGet("/api/game/tasks", cfg, true, apiEndpoint)) as {
+    tasks?: GameTask[];
+    waitingOn?: unknown[];
+    requestId?: string;
+  };
+  const tasks = inbox.tasks ?? [];
+  const required = tasks.find((t) => t.required) ?? tasks[0];
+  if (!required) {
+    return {
+      submitted: false,
+      reason: "no_pending_task",
+      tasks,
+      waitingOn: inbox.waitingOn ?? [],
+      requestId: inbox.requestId,
+      note: "Empty tasks does not mean the table is unblocked — check waitingOn for peer names."
+    };
+  }
+
+  if (required.taskType === "submit_message_report") {
+    const sent = opts.sent ?? 0;
+    const received = opts.received ?? 0;
+    const result = await apiPost(
+      `/api/game/games/${encodeURIComponent(required.gameId)}/message-report`,
+      { sent, received },
+      cfg,
+      true,
+      apiEndpoint
+    );
+    const after = (await apiGet("/api/game/tasks", cfg, true, apiEndpoint)) as {
+      waitingOn?: unknown[];
+    };
+    return {
+      submitted: true,
+      taskType: required.taskType,
+      gameId: required.gameId,
+      payload: { sent, received },
+      result,
+      waitingOn: after.waitingOn ?? []
+    };
+  }
+
+  if (required.taskType === "submit_execution_action") {
+    const type = opts.actionType ?? "none";
+    const body = { type, action: type };
+    const result = await apiPost(
+      `/api/game/games/${encodeURIComponent(required.gameId)}/action`,
+      body,
+      cfg,
+      true,
+      apiEndpoint
+    );
+    const after = (await apiGet("/api/game/tasks", cfg, true, apiEndpoint)) as {
+      waitingOn?: unknown[];
+    };
+    return {
+      submitted: true,
+      taskType: required.taskType,
+      gameId: required.gameId,
+      payload: body,
+      result,
+      waitingOn: after.waitingOn ?? []
+    };
+  }
+
+  return {
+    submitted: false,
+    reason: "unsupported_task",
+    task: required,
+    waitingOn: inbox.waitingOn ?? [],
+    note: "Tick only auto-submits message-report and execution; use identyclaw_request for join/negotiate."
+  };
+}
+
 const ALLOWED_HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 
 /** Absolute API path only (no scheme/host); blocks traversal. */
@@ -970,6 +1065,31 @@ export default (() => {
           auth: params.auth,
           apiEndpoint: params.apiEndpoint,
           responseType
+        });
+      }
+    }),
+    tool({
+      name: "identyclaw_game_tick",
+      label: "SLC Game Tick",
+      description:
+        "Deterministic SLC heartbeat: ensure_session → GET /api/game/tasks → if a required submit_message_report or submit_execution_action exists, POST it once (defaults sent/received 0 or action none) and return waitingOn. Prefer this over multi-step identyclaw_request for required submits — do not only poll /tasks. Pass apiEndpoint for the game host (e.g. https://slc.discernible.io:8443). Join/negotiate still use identyclaw_request.",
+      parameters: Type.Object({
+        sent: Type.Optional(Type.Number({ description: "message-report sent count (default 0)" })),
+        received: Type.Optional(
+          Type.Number({ description: "message-report received count (default 0)" })
+        ),
+        actionType: Type.Optional(
+          Type.String({ description: "execution action type (default none)" })
+        ),
+        apiEndpoint: apiEndpointParam
+      }),
+      optional: true,
+      async execute(params, config) {
+        const cfg = resolveConfig(config);
+        return gameTick(cfg, params.apiEndpoint, {
+          sent: params.sent,
+          received: params.received,
+          actionType: params.actionType
         });
       }
     })
