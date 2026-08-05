@@ -5,7 +5,7 @@
  * Env:
  *   IDENTYCLAW_REFERENCES — source directory (default: ../idclawserver-idc/references)
  */
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,7 +23,6 @@ const REFERENCE_FILES = [
   "token-metadata.md",
   "mcp-auth-tools.md",
   "hola-subagent-authentication.md",
-  "inter-agent-communication.md",
   "collaboration-envelope.md",
   "openclaw-integration-guide.md",
   "mcp-discovery-index.md",
@@ -57,6 +56,7 @@ if (!existsSync(referencesDir)) {
 
 mkdirSync(outDir, { recursive: true });
 
+const allow = new Set(REFERENCE_FILES);
 for (const file of REFERENCE_FILES) {
   const src = join(referencesDir, file);
   const dest = join(outDir, file);
@@ -66,6 +66,13 @@ for (const file of REFERENCE_FILES) {
   }
   copyFileSync(src, dest);
   console.log(`synced ${file}`);
+}
+
+for (const name of readdirSync(outDir)) {
+  if (!allow.has(name)) {
+    unlinkSync(join(outDir, name));
+    console.log(`removed stale ${name}`);
+  }
 }
 
 console.log(`references copied from ${referencesDir} → ${outDir}`);

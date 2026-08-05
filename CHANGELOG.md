@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.4 — 2026-08-05
+
+- **ClawHub security audit hardening:** exclude publisher `scripts/` from the skill tarball; drop email A2A reference from the skill bundle (A2A remains the separate plugin); fix login timestamp / HOLA checksum doc inconsistencies; replace JWT-shaped examples with placeholders; require checksum-before-install for HTTP `.deb` downloads; add private-key, Passport PII, and autonomous-email warnings.
+
 ## 1.8.3 — 2026-07-23
 
 - **Restore `identyclaw_game_tick` only** (not the full removed `identyclaw_game_*` suite): `ensure_session` → GET `/api/game/tasks` → POST one required `message-report` (defaults 0/0) or `action` (default `none`). Stops observe-only stalls when agents poll `/tasks` but never submit. Join/negotiate still use `identyclaw_request` + peer skill.

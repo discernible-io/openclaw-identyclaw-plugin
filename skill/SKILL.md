@@ -6,7 +6,7 @@ description: >-
   Passport on the Gateway. Use when calling home or federated APIs, creating or
   verifying HOLA lines, resolving Passport IDs, or reading agent discovery
   metadata. For agent-to-agent A2A messaging use the separate identyclaw-a2a plugin.
-version: 1.8.3
+version: 1.8.4
 metadata:
   openclaw:
     envVars:
@@ -126,7 +126,12 @@ ClawHub’s badge means your **IdentyClaw Passport** — not a separate vendor A
 
 Env alternative: `IDENTYCLAW_API_ENDPOINTS=https://api-b.example.com`.
 
-Enroll first if needed: [`references/login-authentication.md`](references/login-authentication.md). Never paste keys into chat.
+Enroll first if needed: [`references/login-authentication.md`](references/login-authentication.md). Never paste keys or JWTs into chat.
+
+**Security notes (operators):**
+- Prefer the OpenClaw plugin for login/HOLA so private keys and JWTs stay on the Gateway.
+- Passport metadata (DN, ContactURI, geo, facial fields) is sensitive — minimize logging and collection.
+- Agent-to-agent A2A is **not** this skill — use `identyclaw-a2a` / the A2A trust skill. Do not enable autonomous email from this skill’s docs.
 
 ---
 

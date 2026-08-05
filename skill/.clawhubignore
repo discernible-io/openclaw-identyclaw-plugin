@@ -1,0 +1,3 @@
+# Publisher-only tooling — not part of the installed skill runtime
+scripts/
+PUBLISH.md
