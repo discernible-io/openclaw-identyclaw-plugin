@@ -2,6 +2,7 @@
 
 ## 1.9.0 — 2026-08-18
 
+- **Native NEAR account generator:** `identyclaw-generate-near-account` / `identyclaw_generate_near_account` write local-host JSON (`implicit_account_id`, `account_id` alias, `private_key`, `ed25519:` **base58** `public_key`) from 32 bytes of CSPRNG entropy. Compact one-line JSON (mode `0600`) for `NEAR_CREDENTIALS_JSON_B64`. No BIP39 seed phrase (accounts are not for wallet export). `idcp` / near-cli-rs stay optional and off by default.
 - **`idcp` tool:** vendored NEAR/RODiT wallet scripts from [openclaw-agents](https://github.com/discernible-io/openclaw-agents) (`idcp-wallet.sh`, `idcp-rotate-passport.sh`, `idcp-activate-account.sh` plus the `idcp-wallet` skill). Agents can list accounts, create/fund implicit accounts, send NEAR, transfer Passport/RODiT on-chain, rotate ownership, and activate credentials. Private keys are never returned (`keys` is refused). Requires `near` (near-cli-rs) on PATH; missing-binary errors include cargo / GitHub-release / `./identyclaw.sh build-image` install steps. Optional tool — allowlist for safer rollout.
 
 ## 1.8.4 — 2026-08-05

@@ -344,10 +344,15 @@ function resolveTargetApiUrl(cfg: RuntimeConfig, apiEndpoint?: string): string {
   return cfg.baseUrl;
 }
 
+function nonEmptyTrimmed(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function resolveBootstrapOutputDir(cfg: RuntimeConfig): string {
   return (
-    cfg.generateNearAccountDefaultDir?.trim() ||
-    process.env.IDENTYCLAW_NEAR_CREDENTIALS_DIR?.trim() ||
+    nonEmptyTrimmed(cfg.generateNearAccountDefaultDir) ??
+    nonEmptyTrimmed(process.env.IDENTYCLAW_NEAR_CREDENTIALS_DIR) ??
     path.join(os.homedir(), ".openclaw", "secrets", "near-credentials")
   );
 }
@@ -1125,7 +1130,7 @@ export default (() => {
       name: "identyclaw_generate_near_account",
       label: "Generate NEAR Account",
       description:
-        "Create a NEAR implicit account and write gennearaccount-compatible JSON to disk. Returns implicit_account_id and public_key only — private key stays in the credentials file. Requires outputDir or generateNearAccountDefaultDir; path must end with secrets/near-credentials or be allowlisted in nearCredentialsOutputDirs.",
+        "Create a NEAR implicit account in plugin code (no near-cli-rs) and write JSON to disk including ed25519:base58 public_key. Returns implicit_account_id and public_key only — private key stays in the credentials file. Requires outputDir or generateNearAccountDefaultDir; path must end with secrets/near-credentials or be allowlisted in nearCredentialsOutputDirs.",
       parameters: Type.Object({
         outputDir: Type.Optional(
           Type.String({
@@ -1137,7 +1142,8 @@ export default (() => {
       optional: true,
       async execute(params, config) {
         const cfg = resolveConfig(config);
-        const outputDir = params.outputDir?.trim() || cfg.generateNearAccountDefaultDir?.trim();
+        const outputDir =
+          nonEmptyTrimmed(params.outputDir) ?? nonEmptyTrimmed(cfg.generateNearAccountDefaultDir);
         if (!outputDir) {
           throw new Error(
             "identyclaw_generate_near_account requires outputDir or generateNearAccountDefaultDir in plugin config (or IDENTYCLAW_NEAR_CREDENTIALS_DIR)"

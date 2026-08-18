@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Operator CLI: generate a NEAR implicit account and write gennearaccount-compatible JSON.
+ * Operator CLI: generate a local NEAR implicit account (plugin code only, no near-cli-rs)
+ * and write JSON including ed25519:base58 public_key (no BIP39 seed phrase).
  *
  * Usage:
  *   node scripts/generate-near-account.mjs [DIRECTORY] [--force]

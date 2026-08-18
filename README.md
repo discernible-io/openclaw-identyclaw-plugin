@@ -122,7 +122,7 @@ Enable optional tools in OpenClaw config (see [Configuration](#-configuration) a
 | **This plugin** (`identyclaw-tools`) | `openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin` | API login, HOLA, identity, DID, MCP resource tools |
 | API contract (MCP) | [api.identyclaw.com/.well-known/mcp](https://api.identyclaw.com/.well-known/mcp) | Canonical JWT, HOLA, and API docs — fetch via `identyclaw_get_resource` or curl |
 | A2A component | `openclaw plugins install clawhub:@identyclaw/openclaw-a2a-plugin` | A2A send/receive — [`openclaw-a2a-idc-plugin`](https://github.com/discernible-io/openclaw-a2a-idc-plugin) |
-| NEAR credentials layout | [gennearaccount](https://github.com/discernible-io/gennearaccount) · [identyclaw-agents](https://github.com/discernible-io/identyclaw-agents) `secrets/near-credentials/` | Implicit-account JSON written by CLI, plugin, or C tool |
+| NEAR credentials layout | Native plugin generator · [gennearaccount](https://github.com/discernible-io/gennearaccount) · [identyclaw-agents](https://github.com/discernible-io/identyclaw-agents) `secrets/near-credentials/` | Implicit-account JSON with `ed25519:` base58 `public_key` |
 | Skill (workflows) | `openclaw skills install clawhub:identyclaw` | Operator playbooks — [`skill/SKILL.md`](./skill/SKILL.md) in this repo |
 | MCP (canonical docs) | `https://api.identyclaw.com/mcp` | Live IdentyClaw API documentation |
 
@@ -166,7 +166,22 @@ Keep credentials in env or secrets files — not in `openclaw.json`.
 
 ## 🔑 NEAR account generation (v1.5.0+)
 
-Create a NEAR implicit account with the Node CLI or optional agent tool in this plugin. Credentials are written as gennearaccount-compatible JSON under `secrets/near-credentials/<implicit_account_id>.json` (directory mode `0700`, file mode `0600`). **Private keys never appear in tool output or chat** — only `implicit_account_id` and `public_key` are returned.
+Create a NEAR implicit account with the **in-plugin** Node generator (32 bytes of CSPRNG entropy → Ed25519). This does **not** invoke `near-cli-rs` or `idcp` — those stay optional and off by default. There is no BIP39 seed phrase: these credentials are for the local host, not wallet export.
+
+Credentials are written under `secrets/near-credentials/<implicit_account_id>.json` (directory mode `0700`, file mode `0600`):
+
+```json
+{
+  "implicit_account_id": "<64-char hex of the public key>",
+  "account_id": "<same hex — NEAR / rodit-auth-be alias>",
+  "public_key": "ed25519:<base58 public key>",
+  "private_key": "ed25519:<base58 seed||public>"
+}
+```
+
+The file is compact (one JSON line, mode `0600`) so it can be encoded as `NEAR_CREDENTIALS_JSON_B64` with `base64 -w0` when a host `secrets/secrets.env` is used.
+
+**Private keys never appear in tool output or chat** — only `implicit_account_id` and `public_key` are returned.
 
 On hosts without Node, build and run **[gennearaccount](https://github.com/discernible-io/gennearaccount)** instead — the C CLI writes the same JSON credential layout to `secrets/near-credentials/`.
 

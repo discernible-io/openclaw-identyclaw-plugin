@@ -10,12 +10,33 @@ const NEAR_CREDENTIALS_SUFFIX = "/secrets/near-credentials";
 /**
  * @typedef {Object} NearImplicitAccountCredentials
  * @property {string} implicit_account_id 64-char hex (Ed25519 public key bytes)
+ * @property {string} account_id Same as implicit_account_id (NEAR / rodit-auth-be loader alias)
  * @property {string} public_key ed25519: + base58(public)
  * @property {string} private_key ed25519: + base58(seed||public) — never return from agent tools
  */
 
 /**
- * Generate NEAR implicit-account credentials (gennearaccount-compatible JSON fields).
+ * Encode a tweetnacl key pair as gennearaccount credential fields.
+ *
+ * @param {nacl.SignKeyPair} keyPair
+ * @returns {NearImplicitAccountCredentials}
+ */
+function encodeNearKeyPair(keyPair) {
+  const implicit_account_id = Buffer.from(keyPair.publicKey).toString("hex");
+  const public_key = `ed25519:${bs58.encode(Buffer.from(keyPair.publicKey))}`;
+  const private_key = `ed25519:${bs58.encode(Buffer.from(keyPair.secretKey))}`;
+  return {
+    implicit_account_id,
+    account_id: implicit_account_id,
+    public_key,
+    private_key
+  };
+}
+
+/**
+ * Generate NEAR implicit-account credentials (local host use — not an exportable wallet).
+ *
+ * Uses 32 bytes of CSPRNG entropy as the Ed25519 seed. Optional `seed` is for tests only.
  *
  * @param {Uint8Array} [seed] Optional 32-byte seed (for tests only)
  * @returns {NearImplicitAccountCredentials}
@@ -26,12 +47,7 @@ function generateNearImplicitAccount(seed) {
     throw new Error("seed must be a 32-byte Uint8Array");
   }
 
-  const keyPair = nacl.sign.keyPair.fromSeed(seedBytes);
-  const implicit_account_id = Buffer.from(keyPair.publicKey).toString("hex");
-  const public_key = `ed25519:${bs58.encode(keyPair.publicKey)}`;
-  const private_key = `ed25519:${bs58.encode(keyPair.secretKey)}`;
-
-  return { implicit_account_id, public_key, private_key };
+  return encodeNearKeyPair(nacl.sign.keyPair.fromSeed(seedBytes));
 }
 
 /**
@@ -111,8 +127,11 @@ function writeNearCredentialsFile(outputDir, options = {}) {
     // Best effort — some filesystems ignore mode on mkdir/chmod.
   }
 
+  // Compact single-line JSON so operators can `base64 -w0` into NEAR_CREDENTIALS_JSON_B64
+  // (cicd-deployment-standard: env-file values must be one logical line).
   const payload = {
     implicit_account_id: credentials.implicit_account_id,
+    account_id: credentials.account_id,
     public_key: credentials.public_key,
     private_key: credentials.private_key
   };
