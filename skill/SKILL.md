@@ -6,7 +6,7 @@ description: >-
   Passport on the Gateway. Use when calling home or federated APIs, creating or
   verifying HOLA lines, resolving Passport IDs, or reading agent discovery
   metadata. For agent-to-agent A2A messaging use the separate identyclaw-a2a plugin.
-version: 1.9.0
+version: 1.9.1
 metadata:
   openclaw:
     envVars:
@@ -30,7 +30,9 @@ metadata:
 **Home API (default):** `https://api.identyclaw.com`  
 **Federated example:** `https://api-b.example.com` (same Rodit login family; configure via `apiEndpoints`)
 
-IdentyClaw is an HTTP API for IdentyClaw Passport holders and the **HOLA** mutual authentication protocol. This skill is the **runnable cheat sheet**; deep specs live in bundled `references/` and MCP `doc:*` resources.
+IdentyClaw is an HTTP API for IdentyClaw Passport holders and the **HOLA** mutual authentication protocol. This skill is a **convenience cheat sheet** for agents; tool catalog and install steps live in the plugin [README](https://github.com/discernible-io/openclaw-identyclaw-plugin/blob/main/README.md). Deep specs live in bundled `references/` and MCP `doc:*` resources.
+
+> **Convenience document:** Change the plugin README and MCP `doc:*` resources first; update this skill only to keep the walkthrough accurate.
 
 **Live docs:** MCP `doc:discovery` · `doc:skills` · `curl https://api.identyclaw.com/api/mcp/resource/doc:skills`
 
@@ -264,7 +266,7 @@ Plugin **v1.6.0+** · tool reference: [README.md](https://github.com/discernible
 | `identyclaw_get_resource` | `GET /api/mcp/resource/{uri}` |
 | `identyclaw_request` | Arbitrary `method` + `path` on home or federated host |
 | `identyclaw_game_tick` | SLC only: ensure session + submit one required message-report/action (safe defaults). Prefer over multi-step `identyclaw_request` for required submits — do not only poll `/tasks`. Pass `apiEndpoint` for the game host. |
-| `idcp` | On-chain RODiT / Passport wallet (near-cli-rs). Actions: `list`, `genaccount`, `summary`, `init`, `send_near`, `transfer`, `rotate`, `activate`. Never returns private keys. Requires `near` on PATH; allowlist as an optional tool. |
+| `idcp` | On-chain RODiT / Passport wallet (near-cli-rs). Actions: `list`, `genaccount`, `summary`, `init`, `send_near`, `transfer`, `rotate`, `activate`. **Off by default** — add `"idcp"` to `tools.allow` and install `near` (near-cli-rs) on the gateway PATH, then restart. Never returns private keys. Native `identyclaw_generate_near_account` does not need this. |
 
 ### Home IdentyClaw surface (default: omit `apiEndpoint`)
 
@@ -279,7 +281,7 @@ Plugin **v1.6.0+** · tool reference: [README.md](https://github.com/discernible
 | `identyclaw_create_hola` | local HOLA sign; signer from `/api/me/identity` |
 | `identyclaw_verify_hola` | `POST /api/identity/verify` |
 
-These home-surface tools still accept `apiEndpoint` for rare full IdentyClaw replicas — **do not** pass a federated product host unless you know it implements that path. Allowlist optional tools in `tools.allow` when credentials are configured.
+These home-surface tools still accept `apiEndpoint` for rare full IdentyClaw replicas — **do not** pass a federated product host unless you know it implements that path. Allowlist optional tools in `tools.allow` when credentials are configured. Enable `idcp` only when on-chain wallet actions are required (`near` on PATH).
 
 **ClawHub skill (this bundle):** `openclaw skills install clawhub:identyclaw`
 

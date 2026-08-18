@@ -9,7 +9,7 @@
 [![npm version](https://img.shields.io/npm/v/@identyclaw/openclaw-identyclaw-plugin.svg?label=npm)](https://www.npmjs.com/package/@identyclaw/openclaw-identyclaw-plugin) [![ClawHub](https://img.shields.io/badge/ClawHub-@identyclaw%2Fopenclaw--identyclaw--plugin-22c55e)](https://clawhub.ai/plugins/@identyclaw/openclaw-identyclaw-plugin) [![GitHub](https://img.shields.io/github/stars/discernible-io/openclaw-identyclaw-plugin?style=social)](https://github.com/discernible-io/openclaw-identyclaw-plugin) [![License](https://img.shields.io/github/license/discernible-io/openclaw-identyclaw-plugin)](https://github.com/discernible-io/openclaw-identyclaw-plugin/blob/main/LICENSE) [![HOLA](https://img.shields.io/badge/auth-HOLA%20%2B%20JWT-a78bfa)](https://api.identyclaw.com/api/mcp/resource/doc:reference:hola-authentication) [![API docs](https://img.shields.io/badge/API-identyclaw.com-14b8a6)](https://api.identyclaw.com/.well-known/mcp)
 
 > [!IMPORTANT]
-> **Production deploy:** For nginx TLS, A2A peer messaging, signed webhooks, and GitHub Actions CI, use **[identyclaw-agents](https://github.com/discernible-io/identyclaw-agents)** instead of wiring plugins manually on the gateway host.
+> **Main deploy:** For nginx TLS, A2A peer messaging, signed webhooks, and GitHub Actions CI, use **[identyclaw-agents](https://github.com/discernible-io/identyclaw-agents)** instead of wiring plugins manually on the gateway host.
 
 <p align="center">
   <img src="images/identyclaw-tools-ecosystem.svg" alt="IdentyClaw stack: OpenClaw gateway, this tools component, and the IdentyClaw API" width="960"/>
@@ -17,7 +17,7 @@
 
 ## Quick start
 
-Four steps to go from zero to a Passport-enrolled gateway (à la carte install — see the production callout above for the full stack template):
+Four steps to go from zero to a Passport-enrolled gateway (à la carte install — see the main-tier callout above for the full stack template):
 
 ```bash
 openclaw plugins install clawhub:@identyclaw/openclaw-identyclaw-plugin
@@ -81,7 +81,7 @@ Restart the gateway:
 openclaw gateway restart
 ```
 
-Enable optional tools in OpenClaw config (see [Configuration](#-configuration) and [Tools](#-tools)):
+Enable optional session / HOLA / identity tools in OpenClaw config (see [Configuration](#-configuration) and [Tools](#-tools)). **`idcp` stays off** until you follow [Enable `idcp`](#enable-idcp-near-cli-rs--optional-off-by-default):
 
 ```json5
 {
@@ -108,8 +108,7 @@ Enable optional tools in OpenClaw config (see [Configuration](#-configuration) a
       "identyclaw_verify_hola",
       "identyclaw_get_agent_identity",
       "identyclaw_check_subagent_signer",
-      "identyclaw_resolve_did",
-      "idcp"
+      "identyclaw_resolve_did"
     ]
   }
 }
@@ -208,9 +207,9 @@ Then purchase a Passport at https://purchase.identyclaw.com for the printed acco
 
 On first gateway startup after install, the plugin also bootstraps a NEAR account when `accountid` / `nearPrivateKey` are unset and no credential JSON exists yet (disable with `generateNearAccountOnInstall: false`). OpenClaw plugin installs skip npm lifecycle scripts, so this startup bootstrap is the ClawHub-safe install path.
 
-### Optional agent tool
+### Optional agent tool (`identyclaw_generate_near_account`)
 
-Allowlist `identyclaw_generate_near_account` and `idcp` for advanced setups. Account generation output path must end with `secrets/near-credentials` or appear in `nearCredentialsOutputDirs`. `idcp` needs `near` (near-cli-rs) on PATH and never returns private keys:
+This tool is **off by default**. Allowlist it when an agent should create credentials on the gateway host. Output path must end with `secrets/near-credentials` or appear in `nearCredentialsOutputDirs`. It does **not** call `near-cli-rs`.
 
 ```json5
 {
@@ -225,12 +224,49 @@ Allowlist `identyclaw_generate_near_account` and `idcp` for advanced setups. Acc
     }
   },
   tools: {
-    allow: ["identyclaw_generate_near_account", "idcp"]
+    allow: ["identyclaw_generate_near_account"]
   }
 }
 ```
 
 Returns: `implicit_account_id`, `public_key`, `filePath` — not `private_key`.
+
+### Enable `idcp` (near-cli-rs) — optional, off by default
+
+`idcp` wraps `scripts/idcp-*.sh` for **on-chain** list / fund / send / transfer / rotate / activate. It is **not** required for native account generation. Leave it disabled unless the operator needs those actions.
+
+1. Install [near-cli-rs](https://github.com/near/near-cli-rs) so the gateway can run `near`:
+
+```bash
+cargo install near-cli-rs
+# put ~/.cargo/bin on PATH
+
+# or GitHub release (v0.29.0, linux x86_64 example):
+curl -fsSL -o /tmp/near-cli-rs.tgz \
+  https://github.com/near/near-cli-rs/releases/download/v0.29.0/near-cli-rs-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf /tmp/near-cli-rs.tgz -C /tmp
+sudo install -m 755 /tmp/near-cli-rs-x86_64-unknown-linux-gnu/near /usr/local/bin/near
+near --version
+# aarch64: near-cli-rs-aarch64-unknown-linux-gnu.tar.gz
+```
+
+OpenClaw agent images: `./identyclaw.sh build-image` in [openclaw-agents](https://github.com/discernible-io/openclaw-agents) installs `/usr/local/bin/near`.
+
+2. Allowlist the tool and restart the gateway:
+
+```json5
+{
+  tools: {
+    allow: ["idcp"]
+  }
+}
+```
+
+```bash
+openclaw gateway restart
+```
+
+`idcp` never returns private keys. Missing `near` produces an install hint (same steps as above). Workspace script usage is in [`skills/idcp-wallet/SKILL.md`](./skills/idcp-wallet/SKILL.md).
 
 ## 💡 Use Cases
 
@@ -251,11 +287,13 @@ Returns: `implicit_account_id`, `public_key`, `filePath` — not `private_key`.
 - **Identity and DID** — `identyclaw_get_my_identity`, per-token lookup, `did:rodit` resolution
 - **Subagent delegation** — `identyclaw_check_subagent_signer` against `POST /api/isauthorizedsigner`
 - **NEAR account generation** — CLI and optional tool; startup bootstrap on first install when creds are missing
-- **RODiT wallet (`idcp`)** — on-chain Passport transfer, fund, rotate, and activate via vendored near-cli-rs scripts (optional; never returns private keys)
+- **RODiT wallet (`idcp`)** — optional and off by default; [enable `idcp`](#enable-idcp-near-cli-rs--optional-off-by-default) (`tools.allow` + `near` on PATH). Never returns private keys
 - **Vendored HOLA client** — `@rodit/hola-client` ships in the published package (ClawHub-safe `file:` dependency)
 - **Optional tool rollout** — sensitive tools off by default; allowlist in OpenClaw config for safer deployment
 
 ## ⚙️ Configuration
+
+Resolution per key uses **nullish** fallback (`??`): plugin config → environment variable → baked-in default. An explicit empty string is kept (it does not fall through). At gateway startup the plugin logs a redacted snapshot (`PRESENT-REDACTED` / `ABSENT` for credentials; `source` per key).
 
 | Field | Env fallback | Used for |
 | --- | --- | --- |
@@ -317,8 +355,8 @@ Requires API session. Create also requires `nearPrivateKey` on the Gateway.
 
 | Tool | Role |
 | --- | --- |
-| `identyclaw_generate_near_account` | Write NEAR credentials JSON to disk; returns `implicit_account_id` + `public_key` only |
-| `idcp` | On-chain RODiT / Passport wallet: list, genaccount, fund, send NEAR, transfer, rotate, activate. Wraps `scripts/idcp-*.sh`. Never returns private keys. Requires `near` on PATH. |
+| `identyclaw_generate_near_account` | Write NEAR credentials JSON to disk; returns `implicit_account_id` + `public_key` only. Off by default — allowlist in `tools.allow`. Does not need `near`. |
+| `idcp` | On-chain RODiT / Passport wallet: list, genaccount, fund, send NEAR, transfer, rotate, activate. Wraps `scripts/idcp-*.sh`. Off by default — [enable `idcp`](#enable-idcp-near-cli-rs--optional-off-by-default) (`tools.allow` + `near` on PATH). Never returns private keys. |
 
 Optional tools are off by default in the manifest; allowlist them in OpenClaw config for safer rollout.
 
@@ -410,6 +448,21 @@ npm run skill:publish:dry-run
 npm run skill:publish
 ```
 
+## Repository docs
+
+| Document | Role |
+| --- | --- |
+| [README.md](./README.md) | Operator install, configuration, and tool catalog |
+| [CHANGELOG.md](./CHANGELOG.md) | Release history |
+| [PUBLISH.md](./PUBLISH.md) | ClawHub plugin publish |
+| [skill/SKILL.md](./skill/SKILL.md) | Agent cheat sheet (convenience copy of workflows) |
+| [skill/README.md](./skill/README.md) | Skill bundle layout |
+| [skill/PUBLISH.md](./skill/PUBLISH.md) | ClawHub skill publish |
+| [hola-client/README.md](./hola-client/README.md) | Vendored `@rodit/hola-client` |
+| [skills/idcp-wallet/SKILL.md](./skills/idcp-wallet/SKILL.md) | Optional `idcp` wallet skill |
+
+Agent workspace copies under `agent-*/workspace/` point at the skill rather than duplicating those workflows.
+
 ## Further reading (API docs)
 
 Fetch any resource with `identyclaw_get_resource`, `curl https://api.identyclaw.com/api/mcp/resource/{uri}`, or browse [MCP discovery](https://api.identyclaw.com/.well-known/mcp).
@@ -434,7 +487,7 @@ Fetch any resource with `identyclaw_get_resource`, `curl https://api.identyclaw.
 [discernible.io](https://www.discernible.io/#developers) · [sdk monorepo](https://github.com/discernible-io/sdk) · [A2A plugin](https://github.com/discernible-io/openclaw-a2a-idc-plugin) · [webhooks plugin](https://github.com/discernible-io/openclaw-identyclaw-webhooks-plugin) · [API docs (MCP)](https://api.identyclaw.com/.well-known/mcp) · [verify HOLA](https://verify.identyclaw.com)
 
 - **This repo:** [discernible-io/openclaw-identyclaw-plugin](https://github.com/discernible-io/openclaw-identyclaw-plugin)
-- **Production template:** [discernible-io/identyclaw-agents](https://github.com/discernible-io/identyclaw-agents) — nginx TLS, A2A, webhooks, CI
+- **Main-tier template:** [discernible-io/identyclaw-agents](https://github.com/discernible-io/identyclaw-agents) — nginx TLS, A2A, webhooks, CI
 - **API contract:** [api.identyclaw.com/.well-known/mcp](https://api.identyclaw.com/.well-known/mcp) — JWT, HOLA, enrollment, OpenClaw integration guides
 - **A2A component:** [discernible-io/openclaw-a2a-idc-plugin](https://github.com/discernible-io/openclaw-a2a-idc-plugin) — Passport JWT peer messaging (`a2a_*` tools)
 - **Webhooks component:** [discernible-io/openclaw-identyclaw-webhooks-plugin](https://github.com/discernible-io/openclaw-identyclaw-webhooks-plugin) — RODiT-signed ingress on `/hooks/wake` and `/hooks/agent`

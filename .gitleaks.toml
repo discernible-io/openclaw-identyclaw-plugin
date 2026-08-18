@@ -1,0 +1,19 @@
+title = "openclaw-identyclaw-plugin"
+
+[extend]
+useDefault = true
+
+# Documented non-secrets only. Prefer moving real credentials to host secrets/
+# rather than expanding this allowlist.
+
+[[allowlists]]
+description = "Docs placeholders and public-key encoding vectors"
+paths = [
+  '''(^|/)hola-client/test/''',
+]
+regexes = [
+  '''ed25519:\.\.\.''',
+  '''clh_<your-token>''',
+  '''<jwt_token>''',
+  '''<64-char-hex-near-implicit-account>''',
+]

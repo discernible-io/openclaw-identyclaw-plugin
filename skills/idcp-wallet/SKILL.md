@@ -5,7 +5,12 @@ description: NEAR wallet helpers for IdentyClaw Passport accounts — create imp
 
 # IdentyClaw NEAR wallet (idcp-wallet)
 
-Use these **workspace scripts** (plain `exec`, no `elevated`) for NEAR account and Passport hygiene. They wrap [near-cli-rs](https://github.com/near/near-cli-rs).
+Two ways to run these helpers:
+
+1. **OpenClaw plugin tool `idcp`** (off by default) — allowlist `idcp` in `tools.allow`, install [near-cli-rs](https://github.com/near/near-cli-rs) so `near` is on PATH, then restart the gateway. See the plugin README section *Enable `idcp`*.
+2. **Workspace scripts** below (plain `exec`, no `elevated`) — same `idcp-*.sh` files. They wrap near-cli-rs.
+
+Native implicit-account JSON (`identyclaw-generate-near-account`) does **not** need this skill or `near`.
 
 Credentials live in `secrets/near-credentials/<account_id>.json`. The active Passport owner is `secrets/near-credentials/.active`.
 

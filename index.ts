@@ -115,6 +115,183 @@ const apiEndpointParam = Type.Optional(
 
 const ONE_MINUTE_MS = 60_000;
 const DEFAULT_JWT_TTL_SEC = 3600;
+const LOG_COMPONENT = "identyclaw-tools";
+
+type StructuredLogger = {
+  debug?: (message: string, meta?: Record<string, unknown>) => void;
+  info: (message: string, meta?: Record<string, unknown>) => void;
+  warn?: (message: string, meta?: Record<string, unknown>) => void;
+  error?: (message: string, meta?: Record<string, unknown>) => void;
+};
+
+/** Set in plugin.register — used for fallback, HTTP, and startup logs. */
+let pluginLogger: StructuredLogger | undefined;
+
+function logWithContext(
+  level: "debug" | "info" | "warn" | "error",
+  message: string,
+  context: Record<string, unknown> = {},
+  err?: unknown
+): void {
+  const logger = pluginLogger;
+  if (!logger) {
+    return;
+  }
+  const payload: Record<string, unknown> = {
+    component: LOG_COMPONENT,
+    ...context
+  };
+  if (err instanceof Error) {
+    payload.error = {
+      name: err.name,
+      message: err.message,
+      ...("code" in err && typeof (err as { code?: unknown }).code === "string"
+        ? { code: (err as { code: string }).code }
+        : {})
+    };
+  }
+  const fn = logger[level] ?? logger.info;
+  fn.call(logger, message, payload);
+}
+
+function redactPresence(value: string | undefined): "PRESENT-REDACTED" | "ABSENT" {
+  return value != null && value.length > 0 ? "PRESENT-REDACTED" : "ABSENT";
+}
+
+function configSource(
+  pluginValue: unknown,
+  envName: string,
+  hasDefault: boolean
+): "pluginConfig" | "environment" | "default" | "absent" {
+  if (pluginValue !== undefined && pluginValue !== null) {
+    return "pluginConfig";
+  }
+  if (process.env[envName] !== undefined) {
+    return "environment";
+  }
+  if (hasDefault) {
+    return "default";
+  }
+  return "absent";
+}
+
+function accountIdSource(pluginConfig: Record<string, unknown>): "pluginConfig" | "environment" | "absent" {
+  if (pluginConfig.accountid !== undefined && pluginConfig.accountid !== null) {
+    return "pluginConfig";
+  }
+  if (pluginConfig.roditid !== undefined && pluginConfig.roditid !== null) {
+    return "pluginConfig";
+  }
+  if (process.env.IDENTYCLAW_ACCOUNT_ID !== undefined || process.env.IDENTYCLAW_RODIT_ID !== undefined) {
+    return "environment";
+  }
+  return "absent";
+}
+
+function logResolvedConfig(cfg: RuntimeConfig, pluginConfig: Record<string, unknown>): void {
+  logWithContext("info", "Resolved configuration at startup", {
+    operation: "startup.configSnapshot",
+    baseUrl: { value: cfg.baseUrl, source: configSource(pluginConfig.baseUrl, "IDENTYCLAW_BASE_URL", true) },
+    apiEndpoints: {
+      value: cfg.apiEndpoints,
+      source: configSource(pluginConfig.apiEndpoints, "IDENTYCLAW_API_ENDPOINTS", false)
+    },
+    accountid: {
+      value: redactPresence(cfg.accountid),
+      source: accountIdSource(pluginConfig)
+    },
+    nearPrivateKey: {
+      value: redactPresence(cfg.nearPrivateKey),
+      source: configSource(pluginConfig.nearPrivateKey, "IDENTYCLAW_NEAR_PRIVATE_KEY", false)
+    },
+    generateNearAccountDefaultDir: {
+      value: cfg.generateNearAccountDefaultDir ?? "ABSENT",
+      source: configSource(
+        pluginConfig.generateNearAccountDefaultDir,
+        "IDENTYCLAW_NEAR_CREDENTIALS_DIR",
+        false
+      )
+    },
+    generateNearAccountOnInstall: {
+      value: cfg.generateNearAccountOnInstall !== false,
+      source: pluginConfig.generateNearAccountOnInstall != null ? "pluginConfig" : "default"
+    },
+    nearCredentialsOutputDirs: cfg.nearCredentialsOutputDirs ?? [],
+    configKeyCount: 7
+  });
+}
+
+type ApiFailure = {
+  status: number;
+  code?: string;
+  message: string;
+};
+
+/**
+ * Extract machine code + message from a standard API error envelope.
+ * Never returns raw response text (tokens may appear in bodies).
+ */
+async function parseApiFailure(resp: Response): Promise<ApiFailure> {
+  const failure: ApiFailure = { status: resp.status, message: `HTTP ${resp.status}` };
+  try {
+    const text = await resp.text();
+    if (!text.trim()) {
+      return failure;
+    }
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      const err = parsed.error;
+      if (err && typeof err === "object" && !Array.isArray(err)) {
+        const nested = err as Record<string, unknown>;
+        if (typeof nested.code === "string") {
+          failure.code = nested.code;
+        }
+        if (typeof nested.message === "string" && nested.message.trim()) {
+          failure.message = nested.message;
+        }
+      } else if (typeof err === "string" && err.trim()) {
+        failure.code = err;
+        if (typeof parsed.message === "string" && parsed.message.trim()) {
+          failure.message = parsed.message;
+        }
+      } else if (typeof parsed.message === "string" && parsed.message.trim()) {
+        failure.message = parsed.message;
+      }
+    } catch {
+      // Non-JSON body — keep status-only message.
+    }
+  } catch {
+    // Unreadable body — keep status-only message.
+  }
+  return failure;
+}
+
+function formatHttpError(
+  method: string,
+  path: string,
+  target: string,
+  failure: ApiFailure
+): string {
+  const codePart = failure.code ? ` ${failure.code}` : "";
+  return `${method} ${path} on ${target} failed:${codePart} HTTP ${failure.status}: ${failure.message}`;
+}
+
+function throwHttpError(
+  method: string,
+  path: string,
+  target: string,
+  failure: ApiFailure,
+  operation: string
+): never {
+  logWithContext("error", "API request failed", {
+    operation,
+    method,
+    path,
+    statusCode: failure.status,
+    error: { code: failure.code, message: failure.message }
+  });
+  throw new Error(formatHttpError(method, path, target, failure));
+}
 
 /** Per-API JWT sessions (key = normalizeApiUrl with port preserved). */
 const loginCacheByApi = new Map<string, LoginCache>();
@@ -239,7 +416,15 @@ function validateFederatedLoginTarget(
 }
 
 function cacheJwt(apiEndpoint: string, jwt: string, federated: boolean): LoginCache {
-  const expiresAtMs = parseJwtExpiryMs(jwt) ?? Date.now() + DEFAULT_JWT_TTL_SEC * 1000;
+  const parsedExp = parseJwtExpiryMs(jwt);
+  if (parsedExp == null) {
+    logWithContext("warn", "JWT missing exp; using default TTL", {
+      operation: "auth.cacheJwt",
+      apiEndpoint: normalizeApiUrl(apiEndpoint),
+      defaultTtlSec: DEFAULT_JWT_TTL_SEC
+    });
+  }
+  const expiresAtMs = parsedExp ?? Date.now() + DEFAULT_JWT_TTL_SEC * 1000;
   const entry: LoginCache = {
     token: jwt,
     expiresAtMs,
@@ -251,25 +436,28 @@ function cacheJwt(apiEndpoint: string, jwt: string, federated: boolean): LoginCa
 }
 
 function applyNewTokenFromResponse(resp: Response, apiEndpoint: string, homeUrl: string): void {
-  const renewed = resp.headers.get("New-Token") || resp.headers.get("new-token");
+  const renewed = resp.headers.get("New-Token") ?? resp.headers.get("new-token");
   if (!renewed) {
     return;
   }
   const payload = parseJwtPayload(renewed);
   const check = validateFederatedLoginTarget(payload, apiEndpoint, homeUrl);
   if (!check.ok) {
+    logWithContext("warn", "New-Token rejected", {
+      operation: "auth.applyNewToken",
+      apiEndpoint: normalizeApiUrl(apiEndpoint),
+      error: { code: check.errorCode, message: check.errorMessage }
+    });
     return;
   }
-  cacheJwt(apiEndpoint, renewed, check.federated);
-}
-
-async function readErrorBody(resp: Response): Promise<string> {
-  try {
-    const text = await resp.text();
-    return text.trim() || "(empty body)";
-  } catch {
-    return "(failed to read body)";
+  if (check.warning) {
+    logWithContext("warn", "New-Token accepted with federated claim warning", {
+      operation: "auth.applyNewToken",
+      apiEndpoint: normalizeApiUrl(apiEndpoint),
+      resultText: check.warning
+    });
   }
+  cacheJwt(apiEndpoint, renewed, check.federated);
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -293,7 +481,7 @@ function parseApiEndpointsList(raw: unknown): string[] {
 }
 
 function resolveConfig(pluginConfig: Record<string, unknown>): RuntimeConfig {
-  const envBase = process.env.IDENTYCLAW_BASE_URL || "https://api.identyclaw.com";
+  const envBase = process.env.IDENTYCLAW_BASE_URL ?? "https://api.identyclaw.com";
   const envAccountId = process.env.IDENTYCLAW_ACCOUNT_ID;
   const envRodit = process.env.IDENTYCLAW_RODIT_ID;
   const envKey = process.env.IDENTYCLAW_NEAR_PRIVATE_KEY;
@@ -306,7 +494,8 @@ function resolveConfig(pluginConfig: Record<string, unknown>): RuntimeConfig {
         ? pluginConfig.roditid
         : undefined;
 
-  const baseUrl = normalizeApiUrl(String(pluginConfig.baseUrl || envBase));
+  const configBase = typeof pluginConfig.baseUrl === "string" ? pluginConfig.baseUrl : undefined;
+  const baseUrl = normalizeApiUrl(configBase ?? envBase);
   const fromConfig = parseApiEndpointsList(pluginConfig.apiEndpoints);
   const fromEnv = parseApiEndpointsList(envEndpoints);
   const apiEndpoints = [...new Set([...fromConfig, ...fromEnv])].filter(
@@ -316,7 +505,7 @@ function resolveConfig(pluginConfig: Record<string, unknown>): RuntimeConfig {
   return {
     baseUrl,
     apiEndpoints,
-    accountid: accountFromConfig || envAccountId || envRodit,
+    accountid: accountFromConfig ?? envAccountId ?? envRodit,
     nearPrivateKey:
       typeof pluginConfig.nearPrivateKey === "string"
         ? pluginConfig.nearPrivateKey
@@ -352,7 +541,6 @@ function nonEmptyTrimmed(value: string | undefined): string | undefined {
 function resolveBootstrapOutputDir(cfg: RuntimeConfig): string {
   return (
     nonEmptyTrimmed(cfg.generateNearAccountDefaultDir) ??
-    nonEmptyTrimmed(process.env.IDENTYCLAW_NEAR_CREDENTIALS_DIR) ??
     path.join(os.homedir(), ".openclaw", "secrets", "near-credentials")
   );
 }
@@ -368,10 +556,7 @@ function hasExistingNearCredentials(outputDir: string): boolean {
   }
 }
 
-function maybeGenerateNearAccountOnInstall(
-  cfg: RuntimeConfig,
-  log: (message: string) => void
-): void {
+function maybeGenerateNearAccountOnInstall(cfg: RuntimeConfig): void {
   if (cfg.generateNearAccountOnInstall === false) {
     return;
   }
@@ -388,15 +573,22 @@ function maybeGenerateNearAccountOnInstall(
     const result = writeNearCredentialsFile(outputDir, {
       allowedOutputDirs: cfg.nearCredentialsOutputDirs
     });
-    log(
-      `IdentyClaw: NEAR implicit account created: ${result.implicit_account_id} (credentials: ${result.filePath})`
-    );
-    log(
-      "IdentyClaw: Purchase a Passport at https://purchase.identyclaw.com, then restart the gateway to sync credentials."
-    );
+    logWithContext("info", "NEAR implicit account created", {
+      operation: "startup.generateNearAccount",
+      implicitAccountId: result.implicit_account_id,
+      filePath: result.filePath
+    });
+    logWithContext("info", "Purchase a Passport then restart the gateway to sync credentials", {
+      operation: "startup.generateNearAccount",
+      purchaseUrl: "https://purchase.identyclaw.com"
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    log(`IdentyClaw: NEAR account bootstrap skipped: ${message}`);
+    logWithContext(
+      "warn",
+      "NEAR account bootstrap skipped",
+      { operation: "startup.generateNearAccount" },
+      err
+    );
   }
 }
 
@@ -472,16 +664,17 @@ async function getJwt(cfg: RuntimeConfig, apiEndpoint?: string): Promise<string>
   }
 
   if (!cfg.accountid || !cfg.nearPrivateKey) {
-    throw new Error("Missing config: protected tools require accountid and nearPrivateKey");
+    throw new Error("INVALID_REQUEST: protected tools require accountid and nearPrivateKey");
   }
 
   const tsResp = await fetch(`${target}/api/login/timestamp`);
   if (!tsResp.ok) {
-    throw new Error(`Failed to get login timestamp from ${target}: HTTP ${tsResp.status}`);
+    const failure = await parseApiFailure(tsResp);
+    throwHttpError("GET", "/api/login/timestamp", target, failure, "auth.loginTimestamp");
   }
   const tsData = (await tsResp.json()) as { timestamp: number; timestamp_iso: string };
   if (!Number.isFinite(tsData.timestamp) || !tsData.timestamp_iso) {
-    throw new Error(`Timestamp endpoint on ${target} returned invalid payload`);
+    throw new Error("LOGIN_CHALLENGE_TIMESTAMP_INVALID: timestamp endpoint returned invalid payload");
   }
 
   const message = `${cfg.accountid}${tsData.timestamp_iso}`;
@@ -499,13 +692,18 @@ async function getJwt(cfg: RuntimeConfig, apiEndpoint?: string): Promise<string>
     })
   });
   if (!loginResp.ok) {
-    const body = await readErrorBody(loginResp);
-    throw new Error(`Login failed against ${target}: HTTP ${loginResp.status} — ${body}`);
+    const failure = await parseApiFailure(loginResp);
+    throwHttpError("POST", "/api/login", target, failure, "auth.login");
   }
   const loginData = (await loginResp.json()) as { jwt_token?: string; token?: string };
-  const jwt = loginData.jwt_token || loginData.token;
+  const jwt = loginData.jwt_token;
   if (!jwt) {
-    throw new Error(`Login response from ${target} did not include jwt_token`);
+    logWithContext("error", "Login response missing jwt_token", {
+      operation: "auth.login",
+      apiEndpoint: target,
+      tokenFieldPresent: typeof loginData.token === "string"
+    });
+    throw new Error("LOGIN_FAILED: login response did not include jwt_token");
   }
 
   const check = validateFederatedLoginTarget(parseJwtPayload(jwt), target, cfg.baseUrl);
@@ -513,6 +711,13 @@ async function getJwt(cfg: RuntimeConfig, apiEndpoint?: string): Promise<string>
     throw new Error(
       `${check.errorCode ?? "FEDERATED_LOGIN_REJECTED"}: ${check.errorMessage ?? "federated login rejected"}`
     );
+  }
+  if (check.warning) {
+    logWithContext("warn", "Federated login accepted with claim warning", {
+      operation: "auth.login",
+      apiEndpoint: target,
+      resultText: check.warning
+    });
   }
 
   cacheJwt(target, jwt, check.federated);
@@ -532,8 +737,7 @@ async function apiGet(
   }
   const resp = await fetch(`${target}${path}`, { headers });
   if (!resp.ok) {
-    const body = await readErrorBody(resp);
-    throw new Error(`GET ${path} on ${target} failed: HTTP ${resp.status} — ${body}`);
+    throwHttpError("GET", path, target, await parseApiFailure(resp), "api.get");
   }
   if (auth) {
     applyNewTokenFromResponse(resp, target, cfg.baseUrl);
@@ -559,8 +763,7 @@ async function apiPost(
     body: JSON.stringify(body)
   });
   if (!resp.ok) {
-    const errorBody = await readErrorBody(resp);
-    throw new Error(`POST ${path} on ${target} failed: HTTP ${resp.status} — ${errorBody}`);
+    throwHttpError("POST", path, target, await parseApiFailure(resp), "api.post");
   }
   if (auth) {
     applyNewTokenFromResponse(resp, target, cfg.baseUrl);
@@ -581,8 +784,7 @@ async function apiGetText(
   }
   const resp = await fetch(`${target}${path}`, { headers });
   if (!resp.ok) {
-    const body = await readErrorBody(resp);
-    throw new Error(`GET ${path} on ${target} failed: HTTP ${resp.status} — ${body}`);
+    throwHttpError("GET", path, target, await parseApiFailure(resp), "api.get");
   }
   if (auth) {
     applyNewTokenFromResponse(resp, target, cfg.baseUrl);
@@ -723,7 +925,7 @@ const NEAR_CLI_INSTALL_HINT = `near-cli-rs is not installed (binary name: near).
   near --version
 
   # aarch64: use near-cli-rs-aarch64-unknown-linux-gnu.tar.gz
-  # Production OpenClaw agents: ./identyclaw.sh build-image in openclaw-agents
+  # Main-tier OpenClaw agents: ./identyclaw.sh build-image in identyclaw-agents
   # (Containerfile.agent installs /usr/local/bin/near).`;
 
 function resolvePluginRoot(): string {
@@ -947,8 +1149,7 @@ async function apiRequest(
   }
   const resp = await fetch(`${target}${path}`, init);
   if (!resp.ok) {
-    const errorBody = await readErrorBody(resp);
-    throw new Error(`${method} ${path} on ${target} failed: HTTP ${resp.status} — ${errorBody}`);
+    throwHttpError(method, path, target, await parseApiFailure(resp), "api.request");
   }
   if (auth) {
     applyNewTokenFromResponse(resp, target, cfg.baseUrl);
@@ -1352,10 +1553,11 @@ export default (() => {
 
   const baseRegister = plugin.register.bind(plugin);
   plugin.register = (api) => {
+    pluginLogger = api.logger as StructuredLogger;
     baseRegister(api);
-    maybeGenerateNearAccountOnInstall(resolveConfig(api.pluginConfig ?? {}), (message) => {
-      api.logger.info(message);
-    });
+    const cfg = resolveConfig(api.pluginConfig ?? {});
+    logResolvedConfig(cfg, api.pluginConfig ?? {});
+    maybeGenerateNearAccountOnInstall(cfg);
   };
 
   return plugin;

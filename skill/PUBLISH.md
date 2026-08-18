@@ -22,7 +22,7 @@ npm run skill:publish
 
 Bump `version:` in `skill/SKILL.md` frontmatter before each release. Changelog text is taken from root `CHANGELOG.md` when a matching version section exists.
 
-Current prep: **1.8.4** (security-audit hardening).
+Current prep: **1.9.1** (native NEAR generator + `idcp` enable/install docs).
 
 ## Install after publish
 

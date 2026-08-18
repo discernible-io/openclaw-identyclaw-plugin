@@ -56,7 +56,7 @@ require_near_cli() {
     echo "  near --version" >&2
     echo "" >&2
     echo "  # aarch64: use near-cli-rs-aarch64-unknown-linux-gnu.tar.gz" >&2
-    echo "  # Production OpenClaw agents: ./identyclaw.sh build-image in openclaw-agents" >&2
+    echo "  # Main-tier OpenClaw agents: ./identyclaw.sh build-image in identyclaw-agents" >&2
     echo "  # (Containerfile.agent installs /usr/local/bin/near)." >&2
     return 1
   fi

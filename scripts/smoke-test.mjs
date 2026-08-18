@@ -63,13 +63,12 @@ async function loginBootstrap() {
     })
   });
   if (!loginResp.ok) {
-    const text = await loginResp.text();
-    throw new Error(`login failed: HTTP ${loginResp.status} — ${text.trim()}`);
+    throw new Error(`LOGIN_FAILED: HTTP ${loginResp.status}`);
   }
   const loginData = await loginResp.json();
-  const token = loginData.jwt_token || loginData.token;
+  const token = loginData.jwt_token;
   if (!token) {
-    throw new Error("login response missing jwt_token");
+    throw new Error("LOGIN_FAILED: login response missing jwt_token");
   }
   return token;
 }
