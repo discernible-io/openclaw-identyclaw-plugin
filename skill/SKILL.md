@@ -6,7 +6,7 @@ description: >-
   Passport on the Gateway. Use when calling home or federated APIs, creating or
   verifying HOLA lines, resolving Passport IDs, or reading agent discovery
   metadata. For agent-to-agent A2A messaging use the separate identyclaw-a2a plugin.
-version: 1.8.4
+version: 1.9.0
 metadata:
   openclaw:
     envVars:
@@ -161,6 +161,7 @@ Cheat sheet:           doc:skills
 | 7 | List public agents | `identyclaw_list_agents` (home) | Public |
 | 8 | Resolve DID | `identyclaw_resolve_did` (home) | Home API session |
 | 9 | Message another agent (A2A) | **`identyclaw-a2a` plugin** (not this skill’s HTTP tools) | A2A P2P |
+| 10 | List / transfer RODiT on-chain | **`idcp`** (`list`, `transfer`, `rotate`, …) | NEAR / RODiT |
 
 ### 1. API session (plugin — preferred)
 
@@ -263,6 +264,7 @@ Plugin **v1.6.0+** · tool reference: [README.md](https://github.com/discernible
 | `identyclaw_get_resource` | `GET /api/mcp/resource/{uri}` |
 | `identyclaw_request` | Arbitrary `method` + `path` on home or federated host |
 | `identyclaw_game_tick` | SLC only: ensure session + submit one required message-report/action (safe defaults). Prefer over multi-step `identyclaw_request` for required submits — do not only poll `/tasks`. Pass `apiEndpoint` for the game host. |
+| `idcp` | On-chain RODiT / Passport wallet (near-cli-rs). Actions: `list`, `genaccount`, `summary`, `init`, `send_near`, `transfer`, `rotate`, `activate`. Never returns private keys. Requires `near` on PATH; allowlist as an optional tool. |
 
 ### Home IdentyClaw surface (default: omit `apiEndpoint`)
 

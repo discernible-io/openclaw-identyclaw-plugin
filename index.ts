@@ -1,7 +1,9 @@
+import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Type } from "@sinclair/typebox";
 import nacl from "tweetnacl";
 import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
@@ -680,6 +682,221 @@ async function gameTick(
 
 const ALLOWED_HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 
+const IDCP_ACTIONS = [
+  "list",
+  "help",
+  "genaccount",
+  "summary",
+  "init",
+  "send_near",
+  "transfer",
+  "rotate",
+  "activate"
+] as const;
+
+type IdcpAction = (typeof IDCP_ACTIONS)[number];
+
+const IDCP_ACTIONS_NEED_NEAR = new Set<IdcpAction>([
+  "genaccount",
+  "summary",
+  "init",
+  "send_near",
+  "transfer",
+  "rotate"
+]);
+
+const NEAR_CLI_INSTALL_HINT = `near-cli-rs is not installed (binary name: near). Install it, then retry:
+
+  cargo install near-cli-rs
+  # put ~/.cargo/bin on PATH
+
+  # or GitHub release (v0.29.0, linux x86_64 example):
+  curl -fsSL -o /tmp/near-cli-rs.tgz \\
+    https://github.com/near/near-cli-rs/releases/download/v0.29.0/near-cli-rs-x86_64-unknown-linux-gnu.tar.gz
+  tar -xzf /tmp/near-cli-rs.tgz -C /tmp
+  sudo install -m 755 /tmp/near-cli-rs-x86_64-unknown-linux-gnu/near /usr/local/bin/near
+  near --version
+
+  # aarch64: use near-cli-rs-aarch64-unknown-linux-gnu.tar.gz
+  # Production OpenClaw agents: ./identyclaw.sh build-image in openclaw-agents
+  # (Containerfile.agent installs /usr/local/bin/near).`;
+
+function resolvePluginRoot(): string {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+function resolveNearCliBin(): string | undefined {
+  const home = os.homedir();
+  const candidates: string[] = [];
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (dir) {
+      candidates.push(path.join(dir, "near"));
+    }
+  }
+  candidates.push(path.join(home, ".cargo", "bin", "near"));
+  for (const candidate of candidates) {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // try next
+    }
+  }
+  return undefined;
+}
+
+function requireNearCliForIdcp(action: IdcpAction): void {
+  if (!IDCP_ACTIONS_NEED_NEAR.has(action)) {
+    return;
+  }
+  if (!resolveNearCliBin()) {
+    throw new Error(NEAR_CLI_INSTALL_HINT);
+  }
+}
+
+function assertNoIdcpKeysLeak(args: string[]): void {
+  if (args.some((arg) => arg.trim().toLowerCase() === "keys")) {
+    throw new Error(
+      "idcp refuses the keys action — private keys must not be returned to chat"
+    );
+  }
+}
+
+function runIdcpScript(
+  scriptName: "idcp-wallet.sh" | "idcp-rotate-passport.sh" | "idcp-activate-account.sh",
+  args: string[]
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  assertNoIdcpKeysLeak(args);
+  const scriptPath = path.join(resolvePluginRoot(), "scripts", scriptName);
+  if (!fs.existsSync(scriptPath)) {
+    throw new Error(`idcp script missing: ${scriptPath}`);
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("bash", [scriptPath, ...args], {
+      env: process.env,
+      cwd: process.env.OPENCLAW_HOME || process.cwd()
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+    }, 180_000);
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ exitCode: code ?? 1, stdout, stderr });
+    });
+  });
+}
+
+function requireIdcpParam(name: string, value: string | undefined): string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    throw new Error(`idcp ${name} is required`);
+  }
+  return trimmed;
+}
+
+async function executeIdcp(params: {
+  action?: string;
+  accountId?: string;
+  originAccountId?: string;
+  destAccountId?: string;
+  passportTokenId?: string;
+  amount?: string;
+}): Promise<unknown> {
+  const actionRaw = params.action?.trim() || "list";
+  if (!(IDCP_ACTIONS as readonly string[]).includes(actionRaw)) {
+    throw new Error(`Unsupported idcp action '${params.action}'; allowed: ${IDCP_ACTIONS.join(", ")}`);
+  }
+  const action = actionRaw as IdcpAction;
+  requireNearCliForIdcp(action);
+
+  let script: "idcp-wallet.sh" | "idcp-rotate-passport.sh" | "idcp-activate-account.sh" =
+    "idcp-wallet.sh";
+  let args: string[] = [];
+
+  switch (action) {
+    case "list":
+    case "help":
+      args = action === "help" ? ["help"] : [];
+      break;
+    case "genaccount":
+      args = ["genaccount"];
+      break;
+    case "summary":
+      args = [requireIdcpParam("accountId", params.accountId)];
+      break;
+    case "init":
+      args = [
+        requireIdcpParam("originAccountId", params.originAccountId),
+        requireIdcpParam("destAccountId", params.destAccountId),
+        "init"
+      ];
+      break;
+    case "send_near":
+      args = [
+        requireIdcpParam("originAccountId", params.originAccountId),
+        requireIdcpParam("destAccountId", params.destAccountId),
+        "near",
+        requireIdcpParam("amount", params.amount)
+      ];
+      break;
+    case "transfer":
+      args = [
+        requireIdcpParam("originAccountId", params.originAccountId),
+        requireIdcpParam("destAccountId", params.destAccountId),
+        requireIdcpParam("passportTokenId", params.passportTokenId)
+      ];
+      break;
+    case "rotate":
+      script = "idcp-rotate-passport.sh";
+      args = [requireIdcpParam("passportTokenId", params.passportTokenId)];
+      if (params.destAccountId?.trim()) {
+        args.push(params.destAccountId.trim());
+      }
+      break;
+    case "activate":
+      script = "idcp-activate-account.sh";
+      args = [requireIdcpParam("accountId", params.accountId)];
+      break;
+  }
+
+  const result = await runIdcpScript(script, args);
+  if (result.exitCode !== 0) {
+    const detail = (result.stderr || result.stdout).trim();
+    const missingNear =
+      /near-cli-rs is not installed|near is not installed|Rebuild the agent image \(near-cli-rs\)/i.test(
+        detail
+      );
+    throw new Error(
+      missingNear
+        ? `idcp ${action} failed: near-cli-rs missing.\n${NEAR_CLI_INSTALL_HINT}`
+        : `idcp ${action} failed (exit ${result.exitCode}): ${detail}`
+    );
+  }
+  return {
+    ok: true,
+    action,
+    script,
+    args,
+    stdout: result.stdout.trim(),
+    stderr: result.stderr.trim() || undefined,
+    note:
+      "On-chain RODiT / NEAR wallet via near-cli-rs. Private keys stay in secrets/near-credentials. After rotate/activate, operator must restart the gateway (RESTART_REQUIRED)."
+  };
+}
+
 /** Absolute API path only (no scheme/host); blocks traversal. */
 function normalizeRequestPath(rawPath: string): string {
   const trimmed = rawPath.trim();
@@ -755,7 +972,7 @@ export default (() => {
   id: "identyclaw-tools",
   name: "IdentyClaw Tools",
   description:
-    "OpenClaw agent tools for the IdentyClaw HTTP API (multi-API sessions + HOLA). For A2A P2P messaging use the separate identyclaw-a2a plugin.",
+    "OpenClaw agent tools for the IdentyClaw HTTP API (multi-API sessions + HOLA) plus the idcp NEAR/RODiT wallet. For A2A P2P messaging use the separate identyclaw-a2a plugin.",
   configSchema,
   tools: (tool) => [
     tool({
@@ -938,6 +1155,37 @@ export default (() => {
           message:
             "NEAR implicit account created. Private key written to filePath only — restart the gateway (or identyclaw-agents bootstrap) to sync plugin credentials after purchasing a Passport."
         };
+      }
+    }),
+    tool({
+      name: "idcp",
+      label: "IdentyClaw RODiT Wallet",
+      description:
+        "NEAR / RODiT wallet (idcp-wallet scripts from openclaw-agents). List accounts, create implicit accounts, fund, send NEAR, transfer Passport/RODiT on-chain, rotate ownership, or activate credentials. Requires near-cli-rs on PATH. Never returns private keys. Sensitive: create/fund/transfer/rotate/activate need operator approval. After rotate/activate the operator must restart the gateway.",
+      parameters: Type.Object({
+        action: Type.Optional(
+          Type.String({
+            description:
+              "list (default) | help | genaccount | summary | init | send_near | transfer | rotate | activate"
+          })
+        ),
+        accountId: Type.Optional(
+          Type.String({ description: "NEAR account id for summary or activate" })
+        ),
+        originAccountId: Type.Optional(
+          Type.String({ description: "Funding / sending NEAR account id" })
+        ),
+        destAccountId: Type.Optional(
+          Type.String({ description: "Destination NEAR account id (init, send_near, transfer, optional rotate)" })
+        ),
+        passportTokenId: Type.Optional(
+          Type.String({ description: "12-letter Passport / RODiT token id for transfer or rotate" })
+        ),
+        amount: Type.Optional(Type.String({ description: "NEAR amount for send_near (e.g. 0.05)" }))
+      }),
+      optional: true,
+      async execute(params) {
+        return executeIdcp(params);
       }
     }),
     tool({

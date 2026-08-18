@@ -1,7 +1,7 @@
 {
   "id": "identyclaw-tools",
   "name": "IdentyClaw Tools",
-  "description": "OpenClaw agent tools for the IdentyClaw HTTP API (multi-API sessions + HOLA). For A2A P2P messaging use the separate identyclaw-a2a plugin.",
+  "description": "OpenClaw agent tools for the IdentyClaw HTTP API (multi-API sessions + HOLA) plus the idcp NEAR/RODiT wallet. For A2A P2P messaging use the separate identyclaw-a2a plugin.",
   "activation": {
     "onStartup": true
   },
@@ -49,7 +49,7 @@
       }
     }
   },
-  "version": "1.8.3",
+  "version": "1.9.0",
   "contracts": {
     "tools": [
       "identyclaw_ensure_session",
@@ -60,6 +60,7 @@
       "identyclaw_create_hola",
       "identyclaw_verify_hola",
       "identyclaw_generate_near_account",
+      "idcp",
       "identyclaw_list_resources",
       "identyclaw_get_resource",
       "identyclaw_get_agent_identity",
@@ -89,6 +90,9 @@
       "optional": true
     },
     "identyclaw_generate_near_account": {
+      "optional": true
+    },
+    "idcp": {
       "optional": true
     },
     "identyclaw_get_agent_identity": {

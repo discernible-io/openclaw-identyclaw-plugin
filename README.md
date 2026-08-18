@@ -49,6 +49,7 @@ Your agent gets `identyclaw_*` tools for IdentyClaw HTTP without hand-rolling lo
 - `identyclaw_get_nonce` / `identyclaw_create_hola` / `identyclaw_verify_hola` for HOLA peer authentication
 - `identyclaw_check_subagent_signer` for delegation authorization checks
 - `identyclaw_generate_near_account` (optional) for operator NEAR account creation on the gateway host
+- `idcp` (optional) for on-chain RODiT / Passport wallet operations (near-cli-rs scripts from openclaw-agents)
 
 The plugin **auto-logins** when protected tools run: `GET /api/login/timestamp` → sign login payload → `POST /api/login` → **cache `jwt_token` per API URL** until near expiry; applies `New-Token` response headers when present. Pass optional `apiEndpoint` to target a federated peer (e.g. `https://api-b.example.com`) while keeping the home session. Agents should call tools — not invent curl login.
 
@@ -107,7 +108,8 @@ Enable optional tools in OpenClaw config (see [Configuration](#-configuration) a
       "identyclaw_verify_hola",
       "identyclaw_get_agent_identity",
       "identyclaw_check_subagent_signer",
-      "identyclaw_resolve_did"
+      "identyclaw_resolve_did",
+      "idcp"
     ]
   }
 }
@@ -193,7 +195,7 @@ On first gateway startup after install, the plugin also bootstraps a NEAR accoun
 
 ### Optional agent tool
 
-Allowlist `identyclaw_generate_near_account` for advanced setups. Output path must end with `secrets/near-credentials` or appear in `nearCredentialsOutputDirs`:
+Allowlist `identyclaw_generate_near_account` and `idcp` for advanced setups. Account generation output path must end with `secrets/near-credentials` or appear in `nearCredentialsOutputDirs`. `idcp` needs `near` (near-cli-rs) on PATH and never returns private keys:
 
 ```json5
 {
@@ -208,7 +210,7 @@ Allowlist `identyclaw_generate_near_account` for advanced setups. Output path mu
     }
   },
   tools: {
-    allow: ["identyclaw_generate_near_account"]
+    allow: ["identyclaw_generate_near_account", "idcp"]
   }
 }
 ```
@@ -234,6 +236,7 @@ Returns: `implicit_account_id`, `public_key`, `filePath` — not `private_key`.
 - **Identity and DID** — `identyclaw_get_my_identity`, per-token lookup, `did:rodit` resolution
 - **Subagent delegation** — `identyclaw_check_subagent_signer` against `POST /api/isauthorizedsigner`
 - **NEAR account generation** — CLI and optional tool; startup bootstrap on first install when creds are missing
+- **RODiT wallet (`idcp`)** — on-chain Passport transfer, fund, rotate, and activate via vendored near-cli-rs scripts (optional; never returns private keys)
 - **Vendored HOLA client** — `@rodit/hola-client` ships in the published package (ClawHub-safe `file:` dependency)
 - **Optional tool rollout** — sensitive tools off by default; allowlist in OpenClaw config for safer deployment
 
@@ -300,6 +303,7 @@ Requires API session. Create also requires `nearPrivateKey` on the Gateway.
 | Tool | Role |
 | --- | --- |
 | `identyclaw_generate_near_account` | Write NEAR credentials JSON to disk; returns `implicit_account_id` + `public_key` only |
+| `idcp` | On-chain RODiT / Passport wallet: list, genaccount, fund, send NEAR, transfer, rotate, activate. Wraps `scripts/idcp-*.sh`. Never returns private keys. Requires `near` on PATH. |
 
 Optional tools are off by default in the manifest; allowlist them in OpenClaw config for safer rollout.
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.0 — 2026-08-18
+
+- **`idcp` tool:** vendored NEAR/RODiT wallet scripts from [openclaw-agents](https://github.com/discernible-io/openclaw-agents) (`idcp-wallet.sh`, `idcp-rotate-passport.sh`, `idcp-activate-account.sh` plus the `idcp-wallet` skill). Agents can list accounts, create/fund implicit accounts, send NEAR, transfer Passport/RODiT on-chain, rotate ownership, and activate credentials. Private keys are never returned (`keys` is refused). Requires `near` (near-cli-rs) on PATH; missing-binary errors include cargo / GitHub-release / `./identyclaw.sh build-image` install steps. Optional tool — allowlist for safer rollout.
+
 ## 1.8.4 — 2026-08-05
 
 - **ClawHub security audit hardening:** exclude publisher `scripts/` from the skill tarball; drop email A2A reference from the skill bundle (A2A remains the separate plugin); fix login timestamp / HOLA checksum doc inconsistencies; replace JWT-shaped examples with placeholders; require checksum-before-install for HTTP `.deb` downloads; add private-key, Passport PII, and autonomous-email warnings.

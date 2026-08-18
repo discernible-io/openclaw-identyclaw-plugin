@@ -1,6 +1,6 @@
 {
   "name": "@identyclaw/openclaw-identyclaw-plugin",
-  "version": "1.8.3",
+  "version": "1.9.0",
   "license": "MIT-0",
   "type": "module",
   "description": "OpenClaw plugin exposing IdentyClaw API agent tools",
@@ -13,6 +13,10 @@
     "hola-client",
     "scripts/generate-near-account.mjs",
     "scripts/postinstall-generate-near-account.mjs",
+    "scripts/idcp-wallet.sh",
+    "scripts/idcp-activate-account.sh",
+    "scripts/idcp-rotate-passport.sh",
+    "skills/idcp-wallet",
     "openclaw.plugin.json",
     "README.md",
     "LICENSE"

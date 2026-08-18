@@ -22,7 +22,11 @@ const required = [
   "hola-client/index.js",
   "hola-client/lib/",
   "scripts/generate-near-account.mjs",
-  "scripts/postinstall-generate-near-account.mjs"
+  "scripts/postinstall-generate-near-account.mjs",
+  "scripts/idcp-wallet.sh",
+  "scripts/idcp-activate-account.sh",
+  "scripts/idcp-rotate-passport.sh",
+  "skills/idcp-wallet/SKILL.md"
 ];
 const forbidden = [
   "hola-client/test/",
@@ -45,4 +49,4 @@ for (const entry of forbidden) {
   }
 }
 
-console.log("[verify-pack] OK — hola-client and generate-near-account scripts vendored in publish tarball");
+console.log("[verify-pack] OK — hola-client, generate-near-account, and idcp wallet scripts vendored in publish tarball");
