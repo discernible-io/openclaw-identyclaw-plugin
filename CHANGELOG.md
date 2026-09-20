@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.2 — 2026-09-20
+
+- Mark release ready for OpenClaw gateway **2026.9.5** IdentyClaw template sync (no runtime API changes).
+
 ## 1.9.1 — 2026-08-18
 
 - **Native NEAR account generator:** `identyclaw-generate-near-account` / `identyclaw_generate_near_account` write local-host JSON (`implicit_account_id`, `account_id` alias, `private_key`, `ed25519:` **base58** `public_key`) from 32 bytes of CSPRNG entropy. Compact one-line JSON (mode `0600`) for `NEAR_CREDENTIALS_JSON_B64`. No BIP39 seed phrase (accounts are not for wallet export).
