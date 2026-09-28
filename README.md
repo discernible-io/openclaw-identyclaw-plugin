@@ -91,9 +91,7 @@ Enable optional session / HOLA / identity tools in OpenClaw config (see [Configu
         enabled: true,
         config: {
           baseUrl: "https://api.identyclaw.com",
-          apiEndpoints: ["https://api-b.example.com"],
-          accountid: "<64-char-hex-near-implicit-account>",
-          nearPrivateKey: "ed25519:..."
+          apiEndpoints: ["https://api-b.example.com"]
         }
       }
     }
@@ -114,6 +112,7 @@ Enable optional session / HOLA / identity tools in OpenClaw config (see [Configu
 }
 ```
 
+Vanilla path: install the plugin → start the gateway (`openclaw gateway`) → purchase a Passport for the printed account id → use tools. Credentials live under `~/.openclaw/secrets/near-credentials/` (or `generateNearAccountDefaultDir`); optional `accountid` / `nearPrivateKey` config or env vars remain overrides only — do not put private keys in `openclaw.json`.
 ### Related IdentyClaw artifacts
 
 | Artifact | Install / link | Role |
@@ -125,7 +124,7 @@ Enable optional session / HOLA / identity tools in OpenClaw config (see [Configu
 | Skill (workflows) | `openclaw skills install clawhub:identyclaw` | Operator playbooks — [`skill/SKILL.md`](./skill/SKILL.md) in this repo |
 | MCP (canonical docs) | `https://api.identyclaw.com/mcp` | Live IdentyClaw API documentation |
 
-`identyclaw-tools` and `identyclaw-a2a` can share `IDENTYCLAW_ACCOUNT_ID`, `IDENTYCLAW_NEAR_PRIVATE_KEY`, and `IDENTYCLAW_BASE_URL`. Optional `IDENTYCLAW_API_ENDPOINTS` (comma-separated) lists federated HTTP APIs for this plugin. HOLA stays application-layer via `identyclaw_*` tools; A2A peer calls use separate per-peer Passport JWTs through the A2A component (`login_server` / P2P — not the central API session cache here).
+`identyclaw-tools` and `identyclaw-a2a` can share the same NEAR credential JSON under `secrets/near-credentials/` (or optional `IDENTYCLAW_ACCOUNT_ID` / `IDENTYCLAW_NEAR_PRIVATE_KEY` / `IDENTYCLAW_BASE_URL` overrides). Optional `IDENTYCLAW_API_ENDPOINTS` (comma-separated) lists federated HTTP APIs for this plugin. HOLA stays application-layer via `identyclaw_*` tools; A2A peer calls use separate per-peer Passport JWTs through the A2A component (`login_server` / P2P — not the central API session cache here).
 
 ## 🔐 Two lanes — do not mix them
 
@@ -161,7 +160,7 @@ The same NEAR key signs **two different messages** (different encodings):
 
 `identyclaw_verify_hola` does **not** need `nearPrivateKey` — only an API session and the peer's HOLA line.
 
-Keep credentials in env or secrets files — not in `openclaw.json`.
+Keep credentials in the credential file (or env) — not in `openclaw.json`.
 
 ## 🔑 NEAR account generation (v1.5.0+)
 
@@ -203,9 +202,9 @@ Example (identyclaw-agents layout):
 npm run generate-near-account -- ~/identyclaw-agents-app/agents/agent-a/secrets/near-credentials
 ```
 
-Then purchase a Passport at https://purchase.identyclaw.com for the printed account id, restart the gateway (or `./identyclaw.sh restart agent-a`) so bootstrap syncs `IDENTYCLAW_*` into `.env` and plugin config.
+Then purchase a Passport at https://purchase.identyclaw.com for the printed account id. The gateway reads `accountid` / `nearPrivateKey` from that credential file on the next tool call — no harness restart or `config set` sync is required.
 
-On first gateway startup after install, the plugin also bootstraps a NEAR account when `accountid` / `nearPrivateKey` are unset and no credential JSON exists yet (disable with `generateNearAccountOnInstall: false`). OpenClaw plugin installs skip npm lifecycle scripts, so this startup bootstrap is the ClawHub-safe install path.
+On first gateway startup after install, the plugin also bootstraps a NEAR account when `accountid` / `nearPrivateKey` are unset and no credential JSON exists yet (disable with `generateNearAccountOnInstall: false`). OpenClaw plugin installs skip npm lifecycle scripts, so this startup bootstrap is the ClawHub-safe install path. After bootstrap, credentials resolve as `source: "credentialFile"` in the startup snapshot.
 
 ### Optional agent tool (`identyclaw_generate_near_account`)
 
@@ -293,15 +292,15 @@ openclaw gateway restart
 
 ## ⚙️ Configuration
 
-Resolution per key uses **nullish** fallback (`??`): plugin config → environment variable → baked-in default. An explicit empty string is kept (it does not fall through). At gateway startup the plugin logs a redacted snapshot (`PRESENT-REDACTED` / `ABSENT` for credentials; `source` per key).
+Resolution for Passport credentials: **plugin config → environment → credential file** (`generateNearAccountDefaultDir` or `~/.openclaw/secrets/near-credentials`) → unset. The credential file prefers `.active` → `<id>.json`, else the sole `*.json` when exactly one exists. Other keys use nullish fallback (`??`): plugin config → environment → baked-in default. An explicit empty string is kept (it does not fall through). At gateway startup the plugin logs a redacted snapshot (`PRESENT-REDACTED` / `ABSENT` for credentials; `source` per key: `pluginConfig` / `environment` / `credentialFile` / `default` / `absent`).
 
 | Field | Env fallback | Used for |
 | --- | --- | --- |
 | `baseUrl` | `IDENTYCLAW_BASE_URL` | Home API host (default `https://api.identyclaw.com`) — default session target |
 | `apiEndpoints` | `IDENTYCLAW_API_ENDPOINTS` | Extra federated API URLs (array / comma-separated) for concurrent sessions |
-| `accountid` | `IDENTYCLAW_ACCOUNT_ID` | API login identifier (64-char hex NEAR implicit account) |
-| `nearPrivateKey` | `IDENTYCLAW_NEAR_PRIVATE_KEY` | API login signature + `identyclaw_create_hola` local signing |
-| `generateNearAccountDefaultDir` | `IDENTYCLAW_NEAR_CREDENTIALS_DIR` | Default directory for `identyclaw_generate_near_account` |
+| `accountid` | `IDENTYCLAW_ACCOUNT_ID` | API login identifier (64-char hex NEAR implicit account); else credential file |
+| `nearPrivateKey` | `IDENTYCLAW_NEAR_PRIVATE_KEY` | API login signature + `identyclaw_create_hola` local signing; else credential file |
+| `generateNearAccountDefaultDir` | `IDENTYCLAW_NEAR_CREDENTIALS_DIR` | Default directory for `identyclaw_generate_near_account` and credential-file bootstrap |
 | `generateNearAccountOnInstall` | — | Auto-create NEAR credentials on first startup when unset (default `true`) |
 | `nearCredentialsOutputDirs` | — | Extra allowlisted output dirs for account generation tool |
 

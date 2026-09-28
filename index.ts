@@ -158,11 +158,18 @@ function redactPresence(value: string | undefined): "PRESENT-REDACTED" | "ABSENT
   return value != null && value.length > 0 ? "PRESENT-REDACTED" : "ABSENT";
 }
 
+type ConfigValueSource =
+  | "pluginConfig"
+  | "environment"
+  | "credentialFile"
+  | "default"
+  | "absent";
+
 function configSource(
   pluginValue: unknown,
   envName: string,
   hasDefault: boolean
-): "pluginConfig" | "environment" | "default" | "absent" {
+): ConfigValueSource {
   if (pluginValue !== undefined && pluginValue !== null) {
     return "pluginConfig";
   }
@@ -175,7 +182,10 @@ function configSource(
   return "absent";
 }
 
-function accountIdSource(pluginConfig: Record<string, unknown>): "pluginConfig" | "environment" | "absent" {
+function accountIdSource(
+  pluginConfig: Record<string, unknown>,
+  resolved?: string
+): ConfigValueSource {
   if (pluginConfig.accountid !== undefined && pluginConfig.accountid !== null) {
     return "pluginConfig";
   }
@@ -184,6 +194,25 @@ function accountIdSource(pluginConfig: Record<string, unknown>): "pluginConfig" 
   }
   if (process.env.IDENTYCLAW_ACCOUNT_ID !== undefined || process.env.IDENTYCLAW_RODIT_ID !== undefined) {
     return "environment";
+  }
+  if (resolved) {
+    return "credentialFile";
+  }
+  return "absent";
+}
+
+function nearPrivateKeySource(
+  pluginConfig: Record<string, unknown>,
+  resolved?: string
+): ConfigValueSource {
+  if (pluginConfig.nearPrivateKey !== undefined && pluginConfig.nearPrivateKey !== null) {
+    return "pluginConfig";
+  }
+  if (process.env.IDENTYCLAW_NEAR_PRIVATE_KEY !== undefined) {
+    return "environment";
+  }
+  if (resolved) {
+    return "credentialFile";
   }
   return "absent";
 }
@@ -198,11 +227,11 @@ function logResolvedConfig(cfg: RuntimeConfig, pluginConfig: Record<string, unkn
     },
     accountid: {
       value: redactPresence(cfg.accountid),
-      source: accountIdSource(pluginConfig)
+      source: accountIdSource(pluginConfig, cfg.accountid)
     },
     nearPrivateKey: {
       value: redactPresence(cfg.nearPrivateKey),
-      source: configSource(pluginConfig.nearPrivateKey, "IDENTYCLAW_NEAR_PRIVATE_KEY", false)
+      source: nearPrivateKeySource(pluginConfig, cfg.nearPrivateKey)
     },
     generateNearAccountDefaultDir: {
       value: cfg.generateNearAccountDefaultDir ?? "ABSENT",
@@ -480,6 +509,96 @@ function parseApiEndpointsList(raw: unknown): string[] {
   return [];
 }
 
+function nonEmptyTrimmed(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function resolveBootstrapOutputDir(
+  cfg: Pick<RuntimeConfig, "generateNearAccountDefaultDir">
+): string {
+  return (
+    nonEmptyTrimmed(cfg.generateNearAccountDefaultDir) ??
+    path.join(os.homedir(), ".openclaw", "secrets", "near-credentials")
+  );
+}
+
+/**
+ * Resolve a NEAR credentials JSON path under the bootstrap directory.
+ * Prefers `.active` → `<id>.json`; otherwise the sole `*.json` when exactly one exists.
+ * Never logs private key material.
+ */
+function resolveNearCredentialsFilePath(
+  cfg: Pick<RuntimeConfig, "generateNearAccountDefaultDir">
+): string | undefined {
+  const outputDir = resolveBootstrapOutputDir(cfg);
+  try {
+    if (!fs.existsSync(outputDir)) {
+      return undefined;
+    }
+    const activePath = path.join(outputDir, ".active");
+    if (fs.existsSync(activePath)) {
+      const activeId = nonEmptyTrimmed(fs.readFileSync(activePath, "utf8").split(/\r?\n/)[0]);
+      if (activeId) {
+        const activeFile = path.join(outputDir, `${activeId}.json`);
+        if (fs.existsSync(activeFile)) {
+          return activeFile;
+        }
+      }
+    }
+    const jsonFiles = fs
+      .readdirSync(outputDir)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => path.join(outputDir, name));
+    if (jsonFiles.length === 1) {
+      return jsonFiles[0];
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Load accountid + nearPrivateKey from disk credentials (gennearaccount layout).
+ * Private key is never logged.
+ */
+function loadNearCredentialsFromDisk(
+  cfg: Pick<RuntimeConfig, "generateNearAccountDefaultDir">
+): { accountid?: string; nearPrivateKey?: string } | undefined {
+  const filePath = resolveNearCredentialsFilePath(cfg);
+  if (!filePath) {
+    return undefined;
+  }
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as Record<string, unknown>;
+    const accountid =
+      nonEmptyTrimmed(typeof raw.implicit_account_id === "string" ? raw.implicit_account_id : undefined) ??
+      nonEmptyTrimmed(typeof raw.account_id === "string" ? raw.account_id : undefined) ??
+      nonEmptyTrimmed(typeof raw.accountId === "string" ? raw.accountId : undefined);
+    const nearPrivateKey =
+      nonEmptyTrimmed(typeof raw.private_key === "string" ? raw.private_key : undefined) ??
+      nonEmptyTrimmed(typeof raw.privateKey === "string" ? raw.privateKey : undefined);
+    if (!accountid && !nearPrivateKey) {
+      return undefined;
+    }
+    return { accountid, nearPrivateKey };
+  } catch {
+    return undefined;
+  }
+}
+
+function hasExistingNearCredentials(outputDir: string): boolean {
+  try {
+    if (!fs.existsSync(outputDir)) {
+      return false;
+    }
+    return fs.readdirSync(outputDir).some((name) => name.endsWith(".json"));
+  } catch {
+    return false;
+  }
+}
+
 function resolveConfig(pluginConfig: Record<string, unknown>): RuntimeConfig {
   const envBase = process.env.IDENTYCLAW_BASE_URL ?? "https://api.identyclaw.com";
   const envAccountId = process.env.IDENTYCLAW_ACCOUNT_ID;
@@ -502,23 +621,34 @@ function resolveConfig(pluginConfig: Record<string, unknown>): RuntimeConfig {
     (url) => normalizeUrlWithoutPort(url) !== normalizeUrlWithoutPort(baseUrl)
   );
 
+  const generateNearAccountDefaultDir =
+    typeof pluginConfig.generateNearAccountDefaultDir === "string"
+      ? pluginConfig.generateNearAccountDefaultDir
+      : process.env.IDENTYCLAW_NEAR_CREDENTIALS_DIR;
+
+  let accountid = accountFromConfig ?? envAccountId ?? envRodit;
+  let nearPrivateKey =
+    typeof pluginConfig.nearPrivateKey === "string" ? pluginConfig.nearPrivateKey : envKey;
+
+  if (!accountid || !nearPrivateKey) {
+    const fromDisk = loadNearCredentialsFromDisk({ generateNearAccountDefaultDir });
+    if (fromDisk) {
+      accountid = accountid ?? fromDisk.accountid;
+      nearPrivateKey = nearPrivateKey ?? fromDisk.nearPrivateKey;
+    }
+  }
+
   return {
     baseUrl,
     apiEndpoints,
-    accountid: accountFromConfig ?? envAccountId ?? envRodit,
-    nearPrivateKey:
-      typeof pluginConfig.nearPrivateKey === "string"
-        ? pluginConfig.nearPrivateKey
-        : envKey,
+    accountid,
+    nearPrivateKey,
     nearCredentialsOutputDirs: Array.isArray(pluginConfig.nearCredentialsOutputDirs)
       ? pluginConfig.nearCredentialsOutputDirs.filter(
           (entry): entry is string => typeof entry === "string"
         )
       : undefined,
-    generateNearAccountDefaultDir:
-      typeof pluginConfig.generateNearAccountDefaultDir === "string"
-        ? pluginConfig.generateNearAccountDefaultDir
-        : process.env.IDENTYCLAW_NEAR_CREDENTIALS_DIR,
+    generateNearAccountDefaultDir,
     generateNearAccountOnInstall:
       typeof pluginConfig.generateNearAccountOnInstall === "boolean"
         ? pluginConfig.generateNearAccountOnInstall
@@ -531,29 +661,6 @@ function resolveTargetApiUrl(cfg: RuntimeConfig, apiEndpoint?: string): string {
     return normalizeApiUrl(apiEndpoint);
   }
   return cfg.baseUrl;
-}
-
-function nonEmptyTrimmed(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
-}
-
-function resolveBootstrapOutputDir(cfg: RuntimeConfig): string {
-  return (
-    nonEmptyTrimmed(cfg.generateNearAccountDefaultDir) ??
-    path.join(os.homedir(), ".openclaw", "secrets", "near-credentials")
-  );
-}
-
-function hasExistingNearCredentials(outputDir: string): boolean {
-  try {
-    if (!fs.existsSync(outputDir)) {
-      return false;
-    }
-    return fs.readdirSync(outputDir).some((name) => name.endsWith(".json"));
-  } catch {
-    return false;
-  }
 }
 
 function maybeGenerateNearAccountOnInstall(cfg: RuntimeConfig): void {
@@ -578,9 +685,10 @@ function maybeGenerateNearAccountOnInstall(cfg: RuntimeConfig): void {
       implicitAccountId: result.implicit_account_id,
       filePath: result.filePath
     });
-    logWithContext("info", "Purchase a Passport then restart the gateway to sync credentials", {
+    logWithContext("info", "Purchase a Passport for this account id, then use protected tools", {
       operation: "startup.generateNearAccount",
-      purchaseUrl: "https://purchase.identyclaw.com"
+      purchaseUrl: "https://purchase.identyclaw.com",
+      implicitAccountId: result.implicit_account_id
     });
   } catch (err) {
     logWithContext(
@@ -1281,7 +1389,7 @@ export default (() => {
         const cfg = resolveConfig(config);
         if (!cfg.nearPrivateKey) {
           throw new Error(
-            "identyclaw_create_hola requires nearPrivateKey in plugin config or IDENTYCLAW_NEAR_PRIVATE_KEY"
+            "identyclaw_create_hola requires nearPrivateKey in plugin config, IDENTYCLAW_NEAR_PRIVATE_KEY, or a credential file under secrets/near-credentials"
           );
         }
         const target = resolveTargetApiUrl(cfg, params.apiEndpoint);
@@ -1555,9 +1663,11 @@ export default (() => {
   plugin.register = (api) => {
     pluginLogger = api.logger as StructuredLogger;
     baseRegister(api);
-    const cfg = resolveConfig(api.pluginConfig ?? {});
-    logResolvedConfig(cfg, api.pluginConfig ?? {});
+    const pluginConfig = api.pluginConfig ?? {};
+    let cfg = resolveConfig(pluginConfig);
     maybeGenerateNearAccountOnInstall(cfg);
+    cfg = resolveConfig(pluginConfig);
+    logResolvedConfig(cfg, pluginConfig);
   };
 
   return plugin;

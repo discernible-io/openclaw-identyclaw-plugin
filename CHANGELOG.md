@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.3 — 2026-09-28
+
+- **Credential-file bootstrap:** `resolveConfig()` falls through plugin config → env → `secrets/near-credentials` (`.active` or sole `*.json`) so `accountid` / `nearPrivateKey` need not be copied into `openclaw.json`. Startup order is resolve → maybe generate → resolve again → log; redacted snapshot source can be `credentialFile`.
+- **Docs:** vanilla path is install → gateway → purchase Passport for the printed account id → use tools (no harness restart / `config set` to sync keys).
+
 ## 1.9.2 — 2026-09-20
 
 - Mark release ready for OpenClaw gateway **2026.9.5** IdentyClaw template sync (no runtime API changes).
