@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.4 — 2026-10-01
+
+- Rebuild / re-pin against OpenClaw Gateway **2026.9.7** (`peerDependencies` / `compat` / `build`).
+- No runtime API shims; keep `defineToolPlugin` from `openclaw/plugin-sdk/tool-plugin`.
+- Require Node **≥ 24.16**. Matching ClawHub skill **1.9.4**.
+
 ## 1.9.3 — 2026-09-28
 
 - **Credential-file bootstrap:** `resolveConfig()` falls through plugin config → env → `secrets/near-credentials` (`.active` or sole `*.json`) so `accountid` / `nearPrivateKey` need not be copied into `openclaw.json`. Startup order is resolve → maybe generate → resolve again → log; redacted snapshot source can be `credentialFile`.

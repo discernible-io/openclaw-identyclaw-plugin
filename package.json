@@ -1,6 +1,6 @@
 {
   "name": "@identyclaw/openclaw-identyclaw-plugin",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "license": "MIT-0",
   "type": "module",
   "description": "OpenClaw plugin exposing IdentyClaw API agent tools",
@@ -45,26 +45,26 @@
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
-    "openclaw": "^2026.5.17",
+    "openclaw": "2026.9.7",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.5.17"
+    "openclaw": ">=2026.9.7"
   },
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=24.16.0"
   },
   "openclaw": {
     "extensions": [
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.5.17",
-      "minGatewayVersion": "2026.5.17"
+      "pluginApi": ">=2026.9.7",
+      "minGatewayVersion": "2026.9.7"
     },
     "build": {
-      "openclawVersion": "2026.5.17",
-      "pluginSdkVersion": "2026.5.17"
+      "openclawVersion": "2026.9.7",
+      "pluginSdkVersion": "2026.9.7"
     }
   }
 }
