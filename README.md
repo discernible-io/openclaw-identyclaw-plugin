@@ -501,3 +501,13 @@ Fetch any resource with `identyclaw_get_resource`, `curl https://api.identyclaw.
 | **Description** | OpenClaw plugin — IdentyClaw API login, HOLA, identity, and DID tools |
 | **Website** | https://www.discernible.io/#developers |
 | **Topics** | `identyclaw`, `openclaw`, `hola`, `rodit`, `near`, `clawhub` |
+
+<!-- discernible-io:product-links -->
+## Links
+
+Maintained by [Discernible](https://www.discernible.io/).
+
+- **Product:** [discernible.io](https://www.discernible.io/)
+- **Get a Passport:** [purchase.identyclaw.com](https://purchase.identyclaw.com) (buy once — no subscription)
+- **Verify HOLA:** [verify.identyclaw.com](https://verify.identyclaw.com)
+<!-- /discernible-io:product-links -->
