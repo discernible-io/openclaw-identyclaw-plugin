@@ -4,13 +4,42 @@ const { computeHolaChecksum } = require("./checksum");
 
 const PROTOCOL_SUFFIX = "API.IDENTYCLAW.COM/";
 
+/** MUNDO (broadcast) or a 12-letter Passport ID — no spaces/slashes (HOLA is slash-delimited). */
+const RECIPIENT_PATTERN = /^(MUNDO|[A-Z]{12})$/;
+
 function encodeSignatureBase32(signatureBytes) {
   return base32.encode(Buffer.from(signatureBytes)).replace(/=+$/g, "").toUpperCase();
 }
 
+/**
+ * Normalize and validate a HOLA recipient field.
+ * Rejects whitespace and other characters that would produce an invalid wire line —
+ * fail at create time instead of during later verify.
+ *
+ * @param {string} [recipient]
+ * @returns {string} Uppercased MUNDO or 12-letter Passport ID
+ */
 function normalizeRecipient(recipient) {
-  const value = recipient && String(recipient).trim().length > 0 ? recipient : "MUNDO";
-  return String(value).toUpperCase();
+  const raw = recipient == null ? "" : String(recipient);
+  const trimmed = raw.trim();
+  const value = trimmed.length > 0 ? trimmed : "MUNDO";
+  const normalized = value.toUpperCase();
+
+  if (/\s/.test(value) || value.includes("/")) {
+    throw new Error(
+      `Invalid HOLA recipient "${raw}": must not contain spaces or slashes. ` +
+        "Use MUNDO (broadcast) or a 12-letter Passport ID (e.g. BKBVEHBDCRGM), not a display name."
+    );
+  }
+
+  if (!RECIPIENT_PATTERN.test(normalized)) {
+    throw new Error(
+      `Invalid HOLA recipient "${raw}": must be MUNDO or a 12-letter Passport ID ` +
+        "(letters only, no spaces). Example: BKBVEHBDCRGM."
+    );
+  }
+
+  return normalized;
 }
 
 function normalizeTokenId(tokenId) {
@@ -95,6 +124,7 @@ function buildAndSign(params) {
 
 module.exports = {
   PROTOCOL_SUFFIX,
+  RECIPIENT_PATTERN,
   encodeSignatureBase32,
   buildCanonicalPrefix,
   buildAndSign,

@@ -36,6 +36,8 @@ npm install @rodit/hola-client
 | `buildCanonicalPrefix(...)` | Unsigned uppercase prefix (testing) |
 | `parseHola(holaString)` | Format + checksum parse (not full trust / on-chain verify) |
 | `computeHolaChecksum(prefix)` | Mod-23 checksum letter |
+
+`recipient` must be `MUNDO` (broadcast) or a **12-letter Passport ID** with no spaces or slashes. Invalid values throw before signing so bad wire lines are never produced.
 | `buildCollaborationEnvelope(...)` | `identyclaw.collaboration.v1` task wrapper |
 | `parseCollaborationEnvelope(input)` | Parse JSON or ` ```identyclaw ` fenced message |
 | `formatSessionsSendMessage(envelope)` | OpenClaw `sessions_send` body with fence |

@@ -1374,12 +1374,13 @@ export default (() => {
       name: "identyclaw_create_hola",
       label: "Create HOLA",
       description:
-        "HOLA lane: fetch nonce (auto-login) then sign outbound HOLA locally with nearPrivateKey. Signer from GET /api/me/identity on the IdentyClaw home API; only recipient may be supplied. Default: home baseUrl — do not point apiEndpoint at an arbitrary federated product host.",
+        "HOLA lane: fetch nonce (auto-login) then sign outbound HOLA locally with nearPrivateKey. Signer from GET /api/me/identity on the IdentyClaw home API; only recipient may be supplied (MUNDO or 12-letter Passport ID, no spaces). Default: home baseUrl — do not point apiEndpoint at an arbitrary federated product host.",
       parameters: Type.Object({
         recipient: Type.Optional(
           Type.String({
+            pattern: "^([Mm][Uu][Nn][Dd][Oo]|[A-Za-z]{12})$",
             description:
-              "HOLA recipient Passport ID (default MUNDO for broadcast intros); the only user-supplied field"
+              "HOLA recipient: MUNDO (broadcast intros) or a 12-letter Passport ID with no spaces (e.g. BKBVEHBDCRGM). Not a display name — slash-separated HOLA fields cannot contain whitespace. Default: MUNDO."
           })
         ),
         apiEndpoint: apiEndpointParam

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`identyclaw_create_hola` / `@rodit/hola-client`:** reject invalid `recipient` values (spaces, slashes, non–Passport-ID strings) at create time with a clear error; tool schema `pattern` + skill docs require `MUNDO` or a 12-letter Passport ID.
+
 ## 1.9.4 — 2026-10-01
 
 - Rebuild / re-pin against OpenClaw Gateway **2026.9.7** (`peerDependencies` / `compat` / `build`).

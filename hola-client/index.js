@@ -5,7 +5,8 @@ const {
   encodeSignatureBase32,
   normalizeRecipient,
   normalizeTokenId,
-  PROTOCOL_SUFFIX
+  PROTOCOL_SUFFIX,
+  RECIPIENT_PATTERN
 } = require("./lib/sign");
 const { getNonce } = require("./lib/nonce-api");
 const { nearPrivateKeyToSigningSecretKey } = require("./lib/near-key");
@@ -38,6 +39,7 @@ module.exports = {
   normalizeRecipient,
   normalizeTokenId,
   PROTOCOL_SUFFIX,
+  RECIPIENT_PATTERN,
   getNonce,
   nearPrivateKeyToSigningSecretKey,
   generateNearImplicitAccount,

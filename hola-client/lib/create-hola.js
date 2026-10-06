@@ -11,7 +11,7 @@ const { nearPrivateKeyToSigningSecretKey } = require("./near-key");
  * @param {string} params.jwt - Bearer JWT from POST /api/login
  * @param {string} params.tokenId - 12-letter Passport ID of the signer
  * @param {string} [params.baseUrl] - API base URL
- * @param {string} [params.recipient] - HOLA recipient (default MUNDO)
+ * @param {string} [params.recipient] - MUNDO or 12-letter Passport ID; no spaces (default MUNDO)
  * @returns {Promise<object>}
  */
 async function createHola({

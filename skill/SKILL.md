@@ -214,7 +214,7 @@ HOLA/<recipient>/<tokenId>/<timestamp>/<noncetsHex>/API.IDENTYCLAW.COM/<base32-s
 - **Signer / origin** is always **this agent's Passport ID** — resolved from `GET /api/me/identity`.
 - Call **`identyclaw_create_hola`** without `tokenId`, or call **`identyclaw_get_my_identity`** first if you need your ID for other steps.
 - **Never ask the user for your own Passport ID** to create an outbound HOLA line.
-- **Only `recipient`** may be user-supplied (peer Passport ID or `MUNDO` for broadcast intros).
+- **Only `recipient`** may be user-supplied: peer **12-letter Passport ID** (letters only, **no spaces** — e.g. `BKBVEHBDCRGM`) or `MUNDO` for broadcast intros. Do not pass display names or space-separated strings; invalid recipients are rejected before signing.
 - **Subagent delegation** uses a different HOLA wire format — see [`references/hola-subagent-authentication.md`](references/hola-subagent-authentication.md); do not substitute another agent's ID in standard outbound HOLA.
 
 Walkthrough: [`references/hola-howto.md`](references/hola-howto.md). Self-test: `POST /api/testhola`.

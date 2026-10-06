@@ -347,7 +347,7 @@ Requires API session. Create also requires `nearPrivateKey` on the Gateway.
 | Tool | Role | IdentyClaw doc |
 | --- | --- | --- |
 | `identyclaw_get_nonce` | Fetch `noncetsHex` + `timestamp` for manual HOLA builds | [`doc:reference:holanonce-api`](https://api.identyclaw.com/api/mcp/resource/doc:reference:holanonce-api) |
-| `identyclaw_create_hola` | Nonce + local sign → outbound **HOLA line** (`@rodit/hola-client`); signer from `GET /api/me/identity`, optional `recipient` only | [`doc:reference:hola-howto`](https://api.identyclaw.com/api/mcp/resource/doc:reference:hola-howto) steps 2–3 |
+| `identyclaw_create_hola` | Nonce + local sign → outbound **HOLA line** (`@rodit/hola-client`); signer from `GET /api/me/identity`; optional `recipient` is `MUNDO` or a 12-letter Passport ID (**no spaces**) | [`doc:reference:hola-howto`](https://api.identyclaw.com/api/mcp/resource/doc:reference:hola-howto) steps 2–3 |
 | `identyclaw_verify_hola` | `POST /api/identity/verify` for a peer **HOLA line** | [`doc:reference:hola-howto`](https://api.identyclaw.com/api/mcp/resource/doc:reference:hola-howto) step 5 |
 
 ### Account generation (no API session)
