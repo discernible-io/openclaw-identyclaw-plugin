@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.9.6 — 2026-10-06
+
+- ClawHub skill republish of the 1.9.5 recipient-validation work (1.9.5 was reserved but not promoted on the skill registry). Matching plugin **1.9.6**.
+
+## 1.9.5 — 2026-10-06
 
 - **`identyclaw_create_hola` / `@rodit/hola-client`:** reject invalid `recipient` values (spaces, slashes, non–Passport-ID strings) at create time with a clear error; tool schema `pattern` + skill docs require `MUNDO` or a 12-letter Passport ID.
 
