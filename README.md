@@ -2,7 +2,7 @@
 
 **OpenClaw plugin — IdentyClaw API login, HOLA, identity, and DID tools**
 
-[IdentyClaw](https://www.discernible.io/#developers) — portable cryptographic identity for AI agents. Mint a Passport on NEAR, prove yourself with HOLA, and use the IdentyClaw API when you need it.
+[IdentyClaw](https://www.discernible.io/developers/) — portable cryptographic identity for AI agents. Mint a Passport on NEAR, prove yourself with HOLA, and use the IdentyClaw API when you need it. Product pages: [home](https://www.discernible.io/) · [get started](https://www.discernible.io/get-started/) · [developers](https://www.discernible.io/developers/).
 
 > **IdentyClaw component service:** OpenClaw plugin that exposes the IdentyClaw HTTP API as agent tools — discovery, Passport identity, **API session login**, **HOLA** create/verify, subagent delegation, DID resolution, and MCP-style documentation resources. API login and HOLA flows follow the live API contract (via vendored [`@rodit/hola-client`](./hola-client/) for HOLA signing). Protocol docs: [MCP discovery](https://api.identyclaw.com/.well-known/mcp) · [OpenAPI](https://api.identyclaw.com/swagger.json) · [`doc:reference:openclaw-integration-guide`](https://api.identyclaw.com/api/mcp/resource/doc:reference:openclaw-integration-guide).
 
